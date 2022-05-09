@@ -1,0 +1,38 @@
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "lftlib"
+version = "0.1.0"
+description = "A library containing useful tools and definitions for running lattice field theory simulations"
+authors = ["marshrossney <17361029+marshrossney@users.noreply.github.com>"]
+license = "GPLv3"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.2"
+hypothesis = "^6.46.2"
+black = "^22.3.0"
+flake8 = "^4.0.1"
+coverage = "^6.3.2"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.black]
+line-length = 79
+target-version = ['py39']
+exclude = '''
+(
+  /(
+      \.git
+    | \.mypy_cache
+    | \.nox
+    | \.tox
+    | \.venv
+  )/
+)
+'''
