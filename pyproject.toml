@@ -21,7 +21,6 @@ flake8 = "^4.0.1"
 coverage = "^6.3.2"
 ipython = "^8.3.0"
 numpy = "^1.22.3"
-Sphinx = "^4.5.0"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
