@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from random import random
+import random
 
 import torch
 
@@ -40,7 +40,7 @@ class LogWeightMetrics:
         history = []
 
         for prop_weight in weights:
-            if random() < min(1, math.exp(curr_weight - prop_weight)):
+            if random.random() < min(1, math.exp(curr_weight - prop_weight)):
                 curr_weight = prop_weight
                 history.append(1)
             else:
