@@ -64,10 +64,10 @@ class FreeScalarDistribution(torch.distributions.MultivariateNormal):
     def __init__(self, lattice_length: int, m_sq: float) -> None:
         # TODO m_sq should be positive and nonzero
         super().__init__(
-            loc=torch.zeros(lattice_length ** 2),
+            loc=torch.zeros(lattice_length**2),
             precision_matrix=(
                 torchlft.utils.laplacian_2d(lattice_length)
-                + torch.eye(lattice_length ** 2).mul(m_sq)
+                + torch.eye(lattice_length**2).mul(m_sq)
             ),
         )
         self._lattice_length = lattice_length

@@ -19,10 +19,14 @@ Note that the log-det-Jacobian is that of the *forward* transformation.
 """
 from __future__ import annotations
 
+import logging
+
 import torch
 
+log = logging.getLogger(__name__)
 
-def translation(x: torch.Tensor, shift: torch.Tensor, *args) -> tuple[torch.Tensor]:
+
+def translation(x: torch.Tensor, shift: torch.Tensor) -> tuple[torch.Tensor]:
     r"""Performs a pointwise translation of the input tensor.
 
     .. math::
@@ -40,12 +44,12 @@ def translation(x: torch.Tensor, shift: torch.Tensor, *args) -> tuple[torch.Tens
 
     See Also
     --------
-    :py:func:`torchlft.functional.transforms.translation_inv`
+    :py:func:`torchlft.functional.transforms.inv_translation`
     """
     return x.add(shift), torch.zeros_like(x)
 
 
-def translation_inv(
+def inv_translation(
     y: torch.Tensor, shift: torch.Tensor
 ) -> tuple[torch.Tensor]:
     r"""Performs a pointwise translation of the input tensor.
@@ -65,7 +69,7 @@ def translation_inv(
     return y.sub(shift), torch.zeros_like(y)
 
 
-def affine(
+def affine_transform(
     x: torch.Tensor, log_scale: torch.Tensor, shift: torch.Tensor
 ) -> tuple[torch.Tensor]:
     r"""Performs a pointwise affine transformation of the input tensor.
@@ -87,12 +91,12 @@ def affine(
 
     See Also
     --------
-    :py:func:`torchlft.functional.transforms.affine_inv`
+    :py:func:`torchlft.functional.transforms.inv_affine_transform`
     """
     return (x.mul(log_scale.neg().exp()).add(shift), log_scale.neg())
 
 
-def affine_inv(
+def inv_affine_transform(
     y: torch.Tensor, log_scale: torch.Tensor, shift: torch.Tensor
 ) -> tuple[torch.Tensor]:
     r"""Performs a pointwise affine transformation of the input tensor.
@@ -105,32 +109,45 @@ def affine_inv(
 
     See Also
     --------
-    :py:func:`torchlft.functional.transforms.affine`
+    :py:func:`torchlft.functional.transforms.affine_transform`
     """
     return (y.sub(shift).mul(log_scale.exp()), log_scale)
 
 
-def rational_quadratic_spline(
+def rq_spline_transform(
     x: torch.Tensor,
-    segment_width: torch.Tensor,
-    segment_height: torch.Tensor,
-    lower_knot_deriv: torch.Tensor,
-    upper_knot_deriv: torch.Tensor,
-    lower_knot_x: torch.Tensor,
-    lower_knot_y: torch.Tensor,
+    widths: torch.Tensor,
+    heights: torch.Tensor,
+    derivs: torch.Tensor,
+    knots_xcoords: torch.Tensor,
+    knots_ycoords: torch.Tensor,
 ) -> torch.Tensor:
-    eps = 1e-5
-    assert torch.all(x > lower_knot_x - eps)
-    assert torch.all(x < lower_knot_x + segment_width + eps)
 
-    w, h, d0, d1, x0, y0 = (
-        segment_width,
-        segment_height,
-        lower_knot_deriv,
-        upper_knot_deriv,
-        lower_knot_x,
-        lower_knot_y,
+    outside_interval_mask = torch.logical_or(
+        x < knots_xcoords[..., 0],
+        x > knots_xcoords[..., -1],
     )
+    if outside_interval_mask.sum() > 0.001 * x.numel():
+        log.debug("More than 1/1000 inputs fell outside the spline interval")
+
+    segment_idx = torch.searchsorted(knots_xcoords, x) - 1
+    segment_idx.clamp_(0, widths.shape[-1])
+
+    # Get parameters of the segments that x falls in
+    w = torch.gather(widths, -1, segment_idx)
+    h = torch.gather(heights, -1, segment_idx)
+    d0 = torch.gather(derivs, -1, segment_idx)
+    d1 = torch.gather(derivs, -1, segment_idx + 1)
+    x0 = torch.gather(knots_xcoords, -1, segment_idx)
+    y0 = torch.gather(knots_ycoords, -1, segment_idx)
+
+    # NOTE: these will fail because some x are outside interval
+    # Hence, alpha.clamp_(0, 1) will silently hide bugs
+    # TODO: thnk of a smart and cheap way to check
+    # eps = 1e-5
+    # assert torch.all(x > x0 - eps)
+    # assert torch.all(x < x0 + w + eps)
+
     s = h / w
     alpha = (x - x0) / w
     alpha.clamp_(0, 1)
@@ -152,30 +169,42 @@ def rational_quadratic_spline(
     )
     assert torch.all(gradient > 0)
 
+    y[outside_interval_mask] = x[outside_interval_mask]
+
     return y, gradient.log()
 
 
-def rational_quadratic_spline_inv(
+def inv_rq_spline_transform(
     y: torch.Tensor,
-    segment_width: torch.Tensor,
-    segment_height: torch.Tensor,
-    lower_knot_deriv: torch.Tensor,
-    upper_knot_deriv: torch.Tensor,
-    lower_knot_x: torch.Tensor,
-    lower_knot_y: torch.Tensor,
+    widths: torch.Tensor,
+    heights: torch.Tensor,
+    derivs: torch.Tensor,
+    knots_xcoords: torch.Tensor,
+    knots_ycoords: torch.Tensor,
 ) -> torch.Tensor:
-    eps = 1e-5
-    assert torch.all(y > lower_knot_y - eps)
-    assert torch.all(y < lower_knot_y + segment_width + eps)
 
-    w, h, d0, d1, x0, y0 = (
-        segment_width,
-        segment_height,
-        lower_knot_deriv,
-        upper_knot_deriv,
-        lower_knot_x,
-        lower_knot_y,
+    outside_interval_mask = torch.logical_or(
+        y < knots_ycoords[..., 0],
+        y > knots_ycoords[..., -1],
     )
+    if outside_interval_mask.sum() > 0.001 * y.numel():
+        log.debug("More than 1/1000 inputs fell outside the spline interval")
+
+    segment_idx = torch.searchsorted(knots_ycoords, y) - 1
+    segment_idx.clamp_(0, widths.shape[-1])
+
+    # Get parameters of the segments that x falls in
+    w = torch.gather(widths, -1, segment_idx)
+    h = torch.gather(heights, -1, segment_idx)
+    d0 = torch.gather(derivs, -1, segment_idx)
+    d1 = torch.gather(derivs, -1, segment_idx + 1)
+    x0 = torch.gather(knots_xcoords, -1, segment_idx)
+    y0 = torch.gather(knots_ycoords, -1, segment_idx)
+
+    # eps = 1e-5
+    # assert torch.all(y > y0 - eps)
+    # assert torch.all(y < y0 + h + eps)
+
     s = h / w
     beta = (y - y0) / w
     beta.clamp_(0, 1)
