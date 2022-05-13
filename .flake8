@@ -2,6 +2,7 @@
 ignore = 
     E731
     W503
+    F401
 exclude = 
     pyproject.toml
     poetry.lock

@@ -2,9 +2,11 @@ from hypothesis import given, strategies as st
 import pytest
 import torch
 
-from torchlft.functional import (
+from torchlft.functional.transforms import (
     translation,
     inv_translation,
+    rescaling,
+    inv_rescaling,
     affine_transform,
     inv_affine_transform,
     rq_spline_transform,
@@ -53,6 +55,24 @@ def test_translation(input_shape):
     _test_notinplace(inv_translation, x, shift)
 
     _test_roundtrip(translation, inv_translation, x, shift)
+
+
+@given(input_shape=st.lists(st.integers(1, 10), min_size=1, max_size=5))
+def test_rescaling(input_shape):
+    x = torch.empty(input_shape).normal_()
+    log_scale = torch.empty(input_shape).normal_()
+    zeros = torch.zeros_like(log_scale)
+
+    _test_call(rescaling, x, log_scale)
+    _test_call(inv_rescaling, x, log_scale)
+
+    _test_identity(rescaling, x, zeros)
+    _test_identity(inv_rescaling, x, zeros)
+
+    _test_notinplace(rescaling, x, log_scale)
+    _test_notinplace(inv_rescaling, x, log_scale)
+
+    _test_roundtrip(rescaling, inv_rescaling, x, log_scale)
 
 
 @given(input_shape=st.lists(st.integers(1, 10), min_size=1, max_size=5))

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Union
+
 import torch
 
+import torchlft.functional.actions as actions
 import torchlft.utils
 
 
@@ -82,4 +85,36 @@ class FreeScalarDistribution(torch.distributions.MultivariateNormal):
             super()
             .rsample(sample_shape)
             .view(*sample_shape, self._lattice_length, self._lattice_length)
+        )
+
+
+class PhiFourDistributionStandard:
+    def __init__(
+        self,
+        *,
+        m_sq: Union[float, torch.Tensor],
+        lam: Union[float, torch.Tensor],
+    ) -> None:
+        self.m_sq = m_sq
+        self.lam = lam
+
+    def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
+        return actions.phi_four_standard_action(
+            sample, m_sq=self.m_sq, lam=self.lam
+        )
+
+
+class PhiFourDistributionIsing:
+    def __init__(
+        self,
+        *,
+        beta: Union[float, torch.Tensor],
+        lam: Union[float, torch.Tensor],
+    ) -> None:
+        self.beta = beta
+        self.lam = lam
+
+    def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
+        return actions.phi_four_standard_ising(
+            sample, beta=self.beta, lam=self.lam
         )

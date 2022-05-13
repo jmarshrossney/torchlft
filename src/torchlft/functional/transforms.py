@@ -54,8 +54,6 @@ def inv_translation(
 ) -> tuple[torch.Tensor]:
     r"""Performs a pointwise translation of the input tensor.
 
-    The inverse of :py:func:`translation`.
-
     .. math::
 
         y \mapsto x = y - t
@@ -67,6 +65,84 @@ def inv_translation(
     :py:func:`torchlft.functional.transforms.translation`
     """
     return y.sub(shift), torch.zeros_like(y)
+
+
+def rescaling(x: torch.Tensor, log_scale: torch.Tensor) -> tuple[torch.Tensor]:
+    r"""Performs a pointwise rescaling of the input tensor.
+
+    .. math::
+
+        x \mapsto y = x \odot e^{-s}
+
+    Parameters
+    ----------
+    x
+        Tensor to be transformed
+    log_scale
+        The scaling factor, :math:`s`
+
+    See Also
+    --------
+    :py:func:`torchlft.functional.inv_rescaling`
+    """
+    return x.mul(log_scale.neg().exp()), log_scale.neg()
+
+
+def inv_rescaling(
+    y: torch.Tensor, log_scale: torch.Tensor
+) -> tuple[torch.Tensor]:
+    r"""Performs a pointwise rescaling of the input tensor.
+
+    .. math::
+
+        y \mapsto x = y \odot e^{s}
+
+    See Also
+    --------
+    :py:func:`torchlft.functional.rescaling`
+    """
+    return y.mul(log_scale.exp()), log_scale
+
+
+def soft_rescaling(
+    x: torch.Tensor, scale: torch.Tensor
+) -> tuple[torch.Tensor]:
+    r"""Performs a pointwise rescaling of the input tensor.
+
+    .. math::
+
+        x \mapsto y = x \odot \log(1 + e^{s})
+
+    Parameters
+    ----------
+    x
+        Tensor to be transformed
+    scale
+        The scaling factor, :math:`s`
+
+    See Also
+    --------
+    :py:func:`torchlft.functional.inv_soft_rescaling`
+    """
+    soft_scale = scale.exp().log1p()
+    return x.mul(soft_scale), soft_scale.log()
+
+
+def inv_soft_rescaling(
+    y: torch.Tensor, scale: torch.Tensor
+) -> tuple[torch.Tensor]:
+    r"""Performs a pointwise rescaling of the input tensor.
+
+    .. math::
+
+        y \mapsto x = y \odot [\log(1 + e^{s})]^{-1}
+
+    See Also
+    --------
+    :py:func:`torchlft.functional.soft_rescaling`
+    """
+    soft_scale = scale.exp().log1p()
+    return y.div(soft_scale), soft_scale.log().neg()
 
 
 def affine_transform(
@@ -93,7 +169,7 @@ def affine_transform(
     --------
     :py:func:`torchlft.functional.transforms.inv_affine_transform`
     """
-    return (x.mul(log_scale.neg().exp()).add(shift), log_scale.neg())
+    return x.mul(log_scale.neg().exp()).add(shift), log_scale.neg()
 
 
 def inv_affine_transform(
