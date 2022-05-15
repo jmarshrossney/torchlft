@@ -29,11 +29,7 @@ class Transform:
     def params_dim(self) -> int:
         raise NotImplementedError
 
-    @property
     def identity_params(self) -> torch.Tensor:
-        raise NotImplementedError
-
-    def get_identity_params(self, data_shape: torch.Size) -> torch.Tensor:
         raise NotImplementedError
 
 
@@ -62,9 +58,6 @@ class Translation(Transform):
     @property
     def identity_params(self) -> torch.Tensor:
         return torch.Tensor([0])
-
-    def get_identity_params(self, data_shape: torch.Size) -> torch.Tensor:
-        return torch.zeros(data_shape).unsqueeze(self.params_dim)
 
 
 class Rescaling(Transform):
@@ -130,12 +123,6 @@ class AffineTransform(Transform):
     def identity_params(self) -> torch.Tensor:
         return torch.Tensor([0, 0])
 
-    def get_identity_params(self, data_shape: torch.Size) -> torch.Tensor:
-        return torch.stack(
-            [torch.zeros(data_shape), torch.zeros(data_shape)],
-            dim=self.params_dim,
-        )
-
 
 class RQSplineTransform(Transform):
     domain = "interval"
@@ -197,15 +184,6 @@ class RQSplineTransform(Transform):
                 (torch.ones(self._n_knots).exp() - 1).log(),
             ),
             dim=0,
-        )
-
-    def get_identity_params(self, data_shape: torch.Size) -> torch.Tensor:
-        return torch.stack(
-            [
-                param.expand(data_shape)
-                for param in self.identity_params.split(1)
-            ],
-            dim=self.params_dim,
         )
 
 

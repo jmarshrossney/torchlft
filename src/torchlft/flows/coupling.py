@@ -11,7 +11,6 @@ class CouplingLayer(torch.nn.Module):
     def __init__(
         self,
         transform: torchlft.transforms.Transform,
-        net: torch.nn.Module,
         transform_mask: torch.BoolTensor,
         condition_mask: Optional[torch.BoolTensor] = None,
     ) -> None:
@@ -30,56 +29,61 @@ class CouplingLayer(torch.nn.Module):
         assert not torch.any(
             torch.logical_and(transform_mask, condition_mask)
         ), "Transform_mask and condition_mask should not intersect!"
-
-        self._transform = transform
-        self._net = net
         self.register_buffer("_transform_mask", transform_mask)
         self.register_buffer("_condition_mask", condition_mask)
 
-        self.register_buffer(
-            "_transform_params",
-            transform.get_identity_params(
-                data_shape=condition_mask.unsqueeze(dim=0).shape
-            ),
+        self._transform = transform
+        identity_params = torch.stack(
+            [
+                param.expand_as(transform_mask)
+                for param in transform.identity_params.split(1)
+            ],
+            dim=0,
         )
+        self.register_buffer("_identity_params", identity_params)
 
-    def _update_transform_params_buffer(
-        self, data_shape: torch.Tensor
-    ) -> None:
-        if data_shape != self._transform_params.shape:
-            self._transform_params = self._transform.get_identity_params(
-                data_shape
+    def net_forward(self, x_masked: torch.Tensor) -> torch.Tensor:
+        """Forward pass of the inner neural network.
+
+        This method should return a tensor of shape
+        ``(n_batch, n_params, *config_shape)``, i.e. the same shape
+        as the sample being transformed, but with an extra dimension
+        immediately after the batch dimension that is the number of
+        parameters per degree of freedom being transforemd.
+
+        If using fully connected networks:
+
+        >>> v_in = x_masked[:, self._condition_mask]
+        >>> ...
+        >>> params = torch.zeros(
+                x_masked.shape[0],          # batch size
+                self._transform.n_params,   # parameters
+                *x_masked.shape[1:]         # configuration shape
             )
-
-    def update_transform_params(self, x: torch.Tensor) -> None:
-        net_inputs = x[:, self._condition_mask]
-        net_outputs = self._net(net_inputs)
-        self._transform_params.masked_scatter(
-            self._transform_mask, net_outputs
-        )
+        >>> params.masked_scatter_(self._transform_mask, v_out)
+        """
+        raise NotImplementedError
 
     def forward(
-        self, x: torch.Tensor, log_det_jacob: torch.Tensor
+        self, x: torch.Tensor, log_prob: torch.Tensor
     ) -> tuple[torch.Tensor]:
-        self._update_transform_params_buffer(x.shape)
-        self.update_transform_params(x)
-        y, ldj = self._transform(x, self._transform_params)
-        log_det_jacob.add_(ldj.flatten(start_dim=1).sum(dim=1))
-        return y, log_det_jacob
+        params = (
+            self.net_forward(x.mul(self._condition_mask))
+            .mul(self._transform_mask)
+            .add(self._identity_params.mul(~self._transform_mask))
+        )
+        y, log_det_jacob = self._transform(x, params)
+        log_prob.sub_(log_det_jacob.flatten(start_dim=1).sum(dim=1))
+        return y, log_prob
 
     def inverse(
-        self, y: torch.Tensor, log_det_jacob: torch.Tensor
+        self, y: torch.Tensor, log_prob: torch.Tensor
     ) -> tuple[torch.Tensor]:
-        self._update_transform_params_buffer(y.shape)
-        self.update_transform_params(y)
-        x, ldj = self._transform.inv(y, self._transform_params)
-        log_det_jacob.add_(ldj.flatten(start_dim=1).sum(dim=1))
+        params = (
+            self.net_forward(y.mul(self._condition_mask))
+            .mul(self._transform_mask)
+            .add(self._identity_params.mul(~self._transform_mask))
+        )
+        x, log_det_jacob = self._transform.inv(y, params)
+        log_prob.sub_(log_det_jacob.flatten(start_dim=1).sum(dim=1))
         return x, log_det_jacob
-
-
-class CouplingLayerGeometryPreserving(torch.nn.Module):
-    def update_transform_params(self, x: torch.Tensor) -> None:
-        net_inputs = x.mul(self._condition_mask)
-        net_outputs = self._net(net_inputs)
-        net_outputs.mul_(self._transform_mask)
-        self._transform_params.mul_(~self._transform_mask).add_(net_outputs)

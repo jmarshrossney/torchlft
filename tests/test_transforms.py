@@ -18,7 +18,10 @@ def _test_call(transform, x, params):
 
 
 def _test_identity(transform, x):
-    params = transform.get_identity_params(x.shape)
+    params = torch.stack(
+        [param.expand_as(x) for param in transform.identity_params.split(1)],
+        dim=transform.params_dim,
+    )
     y, ldj = transform(x, params)
     assert torch.allclose(x, y)
     assert torch.allclose(ldj, torch.zeros_like(ldj))
