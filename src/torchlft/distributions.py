@@ -1,4 +1,4 @@
-from __future__ import annotations
+#from __future__ import annotations
 
 from typing import Union
 
@@ -77,14 +77,14 @@ class FreeScalarDistribution(torch.distributions.MultivariateNormal):
 
     def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
         """Flattens 2d configurations and calls superclass log_prob."""
-        return super().log_prob(sample.flatten(start_dim=-2))
+        return super().log_prob(sample.flatten(start_dim=-3))
 
     def rsample(self, sample_shape=torch.Size()) -> torch.Tensor:
         """Calls superclass rsample and restores 2d geometry."""
         return (
             super()
             .rsample(sample_shape)
-            .view(*sample_shape, self._lattice_length, self._lattice_length)
+            .view(*sample_shape, 1, self._lattice_length, self._lattice_length)
         )
 
 
@@ -99,22 +99,24 @@ class PhiFourDistributionStandard:
         self.lam = lam
 
     def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
-        return actions.phi_four_standard_action(
+        action = actions.phi_four_action_standard(
             sample, m_sq=self.m_sq, lam=self.lam
         )
+        return action.neg()
 
 
 class PhiFourDistributionIsing:
     def __init__(
         self,
         *,
-        beta: Union[float, torch.Tensor],
-        lam: Union[float, torch.Tensor],
+        beta: float,#Union[float, torch.Tensor],
+        lam: float,#Union[float, torch.Tensor],
     ) -> None:
         self.beta = beta
         self.lam = lam
 
     def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
-        return actions.phi_four_standard_ising(
+        action = actions.phi_four_action_ising(
             sample, beta=self.beta, lam=self.lam
         )
+        return action.neg()

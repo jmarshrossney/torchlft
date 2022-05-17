@@ -61,17 +61,21 @@ class CouplingLayer(torch.nn.Module):
                 *x_masked.shape[1:]         # configuration shape
             )
         >>> params.masked_scatter_(self._transform_mask, v_out)
+        >>> return params
         """
         raise NotImplementedError
 
     def forward(
         self, x: torch.Tensor, log_prob: torch.Tensor
     ) -> tuple[torch.Tensor]:
-        params = (
+        params = self.net_forward(x.mul(self._condition_mask))
+        params = params.mul(self._transform_mask)
+        params = params.add(self._identity_params.mul(~self._transform_mask))
+        """params = (
             self.net_forward(x.mul(self._condition_mask))
             .mul(self._transform_mask)
             .add(self._identity_params.mul(~self._transform_mask))
-        )
+        )"""
         y, log_det_jacob = self._transform(x, params)
         log_prob.sub_(log_det_jacob.flatten(start_dim=1).sum(dim=1))
         return y, log_prob

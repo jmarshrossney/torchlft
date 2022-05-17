@@ -63,7 +63,7 @@ def phi_four_action_standard(
     --------
     :py:func:`torchlft.functional.actions.phi_four_action_ising`
     """
-    return _phi_four_action(hopping=1, quad=(4 + m_sq) / 2, quart=lam)
+    return _phi_four_action(sample, hopping=1, quad=(4 + m_sq) / 2, quart=lam)
 
 
 def phi_four_action_ising(
@@ -117,7 +117,7 @@ def phi_four_action_ising(
     --------
     :py:func:`torchlft.functional.actions.phi_four_action`
     """
-    return _phi_four_action(hopping=beta, quad=1 - 2 * lam, quart=lam)
+    return _phi_four_action(sample, hopping=beta, quad=1 - 2 * lam, quart=lam)
 
 
 def xy_nn_action(sample: torch.Tensor, coupling: torch.Tensor) -> torch.Tensor:

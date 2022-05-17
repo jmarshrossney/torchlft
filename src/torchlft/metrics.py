@@ -56,7 +56,7 @@ class LogWeightMetrics:
 
             D_{KL} = \frac{1}{N} \sum_{\{\Phi\}} - \log w(\Psi)
         """
-        return float(self._log_weights.neg().mean())
+        return float(self._log_weights.mean())
 
     @property
     def acceptance(self) -> float:
@@ -83,7 +83,7 @@ class LogWeightMetrics:
         n = 0
         n_max = 0
         for step in self._history:
-            if step:
+            if not step:
                 n += 1
                 if n > n_max:
                     n_max = n

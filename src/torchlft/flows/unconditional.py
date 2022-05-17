@@ -28,7 +28,7 @@ class UnconditionalLayer(torchlft.flows.base.FlowLayer):
             dim=self._transform.params_dim,
         )
         y, ldj = self._transform(x, params)
-        log_det_jacob.add_(ldj.flatten(start_dim=1).sum(dim=1))
+        log_det_jacob.sub_(ldj.flatten(start_dim=1).sum(dim=1))
         return y, log_det_jacob
 
     def inverse(self, y: torch.Tensor, log_det_jacob: torch.Tensor):
@@ -37,7 +37,7 @@ class UnconditionalLayer(torchlft.flows.base.FlowLayer):
             dim=self._transform.params_dim,
         )
         x, ldj = self._transform.inv(y, params)
-        log_det_jacob.add_(ldj.flatten(start_dim=1).sum(dim=1))
+        log_det_jacob.sub_(ldj.flatten(start_dim=1).sum(dim=1))
         return x, log_det_jacob
 
 
