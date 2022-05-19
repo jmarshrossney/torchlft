@@ -35,13 +35,17 @@ class LogWeightMetrics:
         self._run_metropolis_hastings()
 
     def _run_metropolis_hastings(self) -> None:
-        weights = self._log_weights.tolist()
-        curr_weight = weights.pop(0)
+        log_weights = self._log_weights.tolist()
+        curr_log_weight = log_weights.pop(0)
         history = []
 
-        for prop_weight in weights:
-            if random.random() < min(1, math.exp(curr_weight - prop_weight)):
-                curr_weight = prop_weight
+        for prop_log_weight in log_weights:
+            # Deal with this case separately to avoid overflow
+            if prop_log_weight > curr_log_weight:
+                curr_log_weight = prop_log_weight
+                history.append(1)
+            elif random.random() < min(1, math.exp(prop_log_weight - curr_log_weight)):
+                curr_log_weight = prop_log_weight
                 history.append(1)
             else:
                 history.append(0)
@@ -56,7 +60,7 @@ class LogWeightMetrics:
 
             D_{KL} = \frac{1}{N} \sum_{\{\Phi\}} - \log w(\Psi)
         """
-        return float(self._log_weights.mean())
+        return float(self._log_weights.mean().neg())
 
     @property
     def acceptance(self) -> float:
@@ -154,4 +158,4 @@ class LogWeightMetrics:
             self._log_weights.logsumexp(dim=0).mul(2)
             - self._log_weights.mul(2).logsumexp(dim=0)
         )
-        return ess.div(len(self._log_weights))
+        return float(ess.div(len(self._log_weights)))

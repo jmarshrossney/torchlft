@@ -17,10 +17,10 @@ def _train_loop(prior, target, flow, n_steps=300):
     for _ in range(n_steps):
         z, log_prob_z = next(prior)
         phi, log_prob_phi = flow(z, log_prob_z)
-        log_weights = log_prob_phi - target.log_prob(phi).flatten(
+        log_weights = target.log_prob(phi).flatten(
             start_dim=1
-        ).sum(dim=1)
-        loss = log_weights.mean()
+        ).sum(dim=1) - log_prob_phi
+        loss = log_weights.mean().neg()
 
         optimizer.zero_grad()
         loss.backward()

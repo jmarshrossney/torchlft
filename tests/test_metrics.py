@@ -18,15 +18,18 @@ SEED = 8967452301
 def metrics():
     random.seed(SEED)
     _ = torch.random.manual_seed(SEED)
-    log_weights = torch.rand(10000)
+    q = torch.distributions.Normal(0, 1)
+    x = q.sample([100000])
+    p = torch.distributions.Normal(0, 1.2)
+    log_weights = p.log_prob(x) - q.log_prob(x)
     return torchlft.metrics.LogWeightMetrics(log_weights)
 
 
 def test_metrics(metrics):
-    assert math.isclose(metrics.kl_divergence, 0.49898, abs_tol=1e-4)
-    assert math.isclose(metrics.acceptance, 0.83268, abs_tol=1e-4)
+    assert math.isclose(metrics.kl_divergence, 0.0285, abs_tol=1e-4)
+    assert math.isclose(metrics.acceptance, 0.8841, abs_tol=1e-4)
     assert math.isclose(
-        metrics.integrated_autocorrelation, 0.72413, abs_tol=1e-4
+        metrics.integrated_autocorrelation, 0.7164, abs_tol=1e-4
     )
-    assert math.isclose(metrics.effective_sample_size, 0.92328, abs_tol=1e-4)
-    assert metrics.longest_rejection_run == 7
+    assert math.isclose(metrics.effective_sample_size, 0.8913, abs_tol=1e-4)
+    assert metrics.longest_rejection_run == 24
