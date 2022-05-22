@@ -1,4 +1,4 @@
-#from __future__ import annotations
+# from __future__ import annotations
 
 from typing import Union
 
@@ -109,8 +109,8 @@ class PhiFourDistributionIsing:
     def __init__(
         self,
         *,
-        beta: float,#Union[float, torch.Tensor],
-        lam: float,#Union[float, torch.Tensor],
+        beta: float,  # Union[float, torch.Tensor],
+        lam: float,  # Union[float, torch.Tensor],
     ) -> None:
         self.beta = beta
         self.lam = lam

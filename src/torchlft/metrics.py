@@ -44,7 +44,9 @@ class LogWeightMetrics:
             if prop_log_weight > curr_log_weight:
                 curr_log_weight = prop_log_weight
                 history.append(1)
-            elif random.random() < min(1, math.exp(prop_log_weight - curr_log_weight)):
+            elif random.random() < min(
+                1, math.exp(prop_log_weight - curr_log_weight)
+            ):
                 curr_log_weight = prop_log_weight
                 history.append(1)
             else:

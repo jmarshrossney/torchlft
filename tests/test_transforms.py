@@ -3,6 +3,7 @@ import random
 import torch
 
 from torchlft.transforms import (
+    Tanh,
     Translation,
     Rescaling,
     AffineTransform,
@@ -36,6 +37,14 @@ def _test_roundtrip(transform, x, params):
     xx, ldj_inv = transform.inv(y, params)
     assert torch.allclose(x, xx, atol=1e-5)
     assert torch.allclose(ldj_fwd, ldj_inv.neg(), atol=1e-5)
+
+
+def test_tanh():
+    x = torch.empty(10, 10).normal_()
+    y, ldj_fwd = Tanh()(x)
+    xx, ldj_inv = Tanh().inv(y)
+    assert torch.allclose(x, xx)
+    assert torch.allclose(ldj_fwd, ldj_inv.neg())
 
 
 @given(x_shape=st.lists(st.integers(1, 10), min_size=2, max_size=5))

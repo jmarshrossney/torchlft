@@ -7,6 +7,10 @@ import torch
 import torch.nn.functional as F
 
 
+def sum_except_batch(x: torch.Tensor) -> torch.Tensor:
+    return x.flatten(start_dim=1).sum(dim=1)
+
+
 def make_checkerboard(lattice_shape: list[int]) -> torch.BoolTensor:
     """Return a boolean mask that selects 'even' lattice sites."""
     assert all(

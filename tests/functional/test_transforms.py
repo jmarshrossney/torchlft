@@ -3,6 +3,8 @@ import pytest
 import torch
 
 from torchlft.functional.transforms import (
+    tanh,
+    inv_tanh,
     translation,
     inv_translation,
     rescaling,
@@ -39,7 +41,19 @@ def _test_roundtrip(transform, transform_inv, inputs, *params):
     )
 
 
-@given(input_shape=st.lists(st.integers(1, 10), min_size=1, max_size=5))
+def test_tanh():
+    x = torch.empty(1, 10).normal_()
+
+    _test_call(tanh, x)
+    _test_call(inv_tanh, x)
+
+    _test_notinplace(tanh, x)
+    _test_notinplace(inv_tanh, x)
+
+    _test_roundtrip(tanh, inv_tanh, x)
+
+
+@given(input_shape=st.lists(st.integers(1, 10), min_size=2, max_size=5))
 def test_translation(input_shape):
     x = torch.empty(input_shape).normal_()
     shift = torch.empty(input_shape).normal_()
@@ -57,7 +71,7 @@ def test_translation(input_shape):
     _test_roundtrip(translation, inv_translation, x, shift)
 
 
-@given(input_shape=st.lists(st.integers(1, 10), min_size=1, max_size=5))
+@given(input_shape=st.lists(st.integers(1, 10), min_size=2, max_size=5))
 def test_rescaling(input_shape):
     x = torch.empty(input_shape).normal_()
     log_scale = torch.empty(input_shape).normal_()
@@ -75,7 +89,7 @@ def test_rescaling(input_shape):
     _test_roundtrip(rescaling, inv_rescaling, x, log_scale)
 
 
-@given(input_shape=st.lists(st.integers(1, 10), min_size=1, max_size=5))
+@given(input_shape=st.lists(st.integers(1, 10), min_size=2, max_size=5))
 def test_affine_transform(input_shape):
     x = torch.empty(input_shape).normal_()
     log_scale = torch.empty(input_shape).normal_()

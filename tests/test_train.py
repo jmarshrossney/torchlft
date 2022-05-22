@@ -5,7 +5,10 @@ from pprint import pprint
 from torchlft.distributions import Prior
 from torchlft.flows.base import Flow
 from torchlft.flows.coupling import CouplingLayer
-from torchlft.flows.unconditional import UnconditionalLayer as ULayer, GlobalRescalingLayer
+from torchlft.flows.unconditional import (
+    UnconditionalLayer as ULayer,
+    GlobalRescalingLayer,
+)
 from torchlft.transforms import AffineTransform, Translation
 import torchlft.utils
 
@@ -17,9 +20,9 @@ def _train_loop(prior, target, flow, n_steps=300):
     for _ in range(n_steps):
         z, log_prob_z = next(prior)
         phi, log_prob_phi = flow(z, log_prob_z)
-        log_weights = target.log_prob(phi).flatten(
-            start_dim=1
-        ).sum(dim=1) - log_prob_phi
+        log_weights = (
+            target.log_prob(phi).flatten(start_dim=1).sum(dim=1) - log_prob_phi
+        )
         loss = log_weights.mean().neg()
 
         optimizer.zero_grad()
@@ -27,6 +30,7 @@ def _train_loop(prior, target, flow, n_steps=300):
         optimizer.step()
 
     return float(loss)
+
 
 def test_shift():
     prior = Prior(
@@ -47,6 +51,7 @@ def test_shift():
 
     assert math.isclose(loss, 0, abs_tol=0.1)
 
+
 def test_rescale():
     prior = Prior(
         distribution=torch.distributions.Normal(
@@ -65,6 +70,7 @@ def test_rescale():
     loss = _train_loop(prior, target, flow)
 
     assert math.isclose(loss, 0, abs_tol=0.1)
+
 
 def test_shift_and_rescale():
     prior = Prior(
@@ -122,8 +128,8 @@ def test_shift_and_rescale_coupling():
 
     mask = torchlft.utils.make_checkerboard(LATTICE_SHAPE).unsqueeze(0)
     flow = Flow(
-            CouplingLayerTest(AffineTransform(), mask),
-            CouplingLayerTest(AffineTransform(), ~mask),
+        CouplingLayerTest(AffineTransform(), mask),
+        CouplingLayerTest(AffineTransform(), ~mask),
     )
 
     loss = _train_loop(prior, target, flow)

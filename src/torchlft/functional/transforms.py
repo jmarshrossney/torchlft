@@ -23,7 +23,39 @@ import logging
 
 import torch
 
+from torchlft.utils import sum_except_batch
+
 log = logging.getLogger(__name__)
+
+
+def tanh(x) -> tuple[torch.Tensor]:
+    r"""Applies the tanh function to the input tensor.
+
+    .. math::
+
+        x \mapsto y = \tanh(x)
+
+        \log \left\lvert \frac{\partial y}{\partial x} \right\rvert
+        = -2 \sum_i \log \cosh(x_i)
+    """
+    y = x.tanh()
+    ldj = sum_except_batch(x.cosh().log().mul(-2))
+    return y, ldj
+
+
+def inv_tanh(y) -> tuple[torch.Tensor]:
+    r"""Applies inverse tanh function to the input tensor.
+
+    .. math::
+
+        y \mapsto x = \tanh^{-1}(y)
+
+        \log \left\lvert \frac{\partial x}{\partial y} \right\rvert
+        = - \sum_i \log(1 - y_i^2)
+    """
+    x = y.atanh()
+    ldj = sum_except_batch(y.pow(2).neg().log1p().neg())
+    return x, ldj
 
 
 def translation(x: torch.Tensor, shift: torch.Tensor) -> tuple[torch.Tensor]:
@@ -46,7 +78,9 @@ def translation(x: torch.Tensor, shift: torch.Tensor) -> tuple[torch.Tensor]:
     --------
     :py:func:`torchlft.functional.transforms.inv_translation`
     """
-    return x.add(shift), torch.zeros_like(x)
+    y = x.add(shift)
+    ldj = torch.zeros(y.shape[0])
+    return y, ldj
 
 
 def inv_translation(
@@ -64,7 +98,9 @@ def inv_translation(
     --------
     :py:func:`torchlft.functional.transforms.translation`
     """
-    return y.sub(shift), torch.zeros_like(y)
+    x = y.sub(shift)
+    ldj = torch.zeros(y.shape[0])
+    return x, ldj
 
 
 def rescaling(x: torch.Tensor, log_scale: torch.Tensor) -> tuple[torch.Tensor]:
@@ -85,7 +121,9 @@ def rescaling(x: torch.Tensor, log_scale: torch.Tensor) -> tuple[torch.Tensor]:
     --------
     :py:func:`torchlft.functional.inv_rescaling`
     """
-    return x.mul(log_scale.neg().exp()), log_scale.neg()
+    y = x.mul(log_scale.neg().exp())
+    ldj = sum_except_batch(log_scale.neg())
+    return y, ldj
 
 
 def inv_rescaling(
@@ -101,7 +139,9 @@ def inv_rescaling(
     --------
     :py:func:`torchlft.functional.rescaling`
     """
-    return y.mul(log_scale.exp()), log_scale
+    x = y.mul(log_scale.exp())
+    ldj = sum_except_batch(log_scale)
+    return x, ldj
 
 
 def soft_rescaling(
@@ -125,7 +165,9 @@ def soft_rescaling(
     :py:func:`torchlft.functional.inv_soft_rescaling`
     """
     soft_scale = scale.exp().log1p()
-    return x.mul(soft_scale), soft_scale.log()
+    y = x.mul(soft_scale)
+    ldj = sum_except_batch(soft_scale.log())
+    return y, ldj
 
 
 def inv_soft_rescaling(
@@ -142,7 +184,9 @@ def inv_soft_rescaling(
     :py:func:`torchlft.functional.soft_rescaling`
     """
     soft_scale = scale.exp().log1p()
-    return y.div(soft_scale), soft_scale.log().neg()
+    x = y.div(soft_scale)
+    ldj = sum_except_batch(soft_scale.log().neg())
+    return x, ldj
 
 
 def affine_transform(
@@ -169,7 +213,9 @@ def affine_transform(
     --------
     :py:func:`torchlft.functional.transforms.inv_affine_transform`
     """
-    return x.mul(log_scale.neg().exp()).add(shift), log_scale.neg()
+    y = x.mul(log_scale.neg().exp()).add(shift)
+    ldj = sum_except_batch(log_scale.neg())
+    return y, ldj
 
 
 def inv_affine_transform(
@@ -187,7 +233,9 @@ def inv_affine_transform(
     --------
     :py:func:`torchlft.functional.transforms.affine_transform`
     """
-    return (y.sub(shift).mul(log_scale.exp()), log_scale)
+    x = y.sub(shift).mul(log_scale.exp())
+    ldj = sum_except_batch(log_scale)
+    return x, ldj
 
 
 def rq_spline_transform(
@@ -247,7 +295,9 @@ def rq_spline_transform(
 
     y[outside_interval_mask] = x[outside_interval_mask]
 
-    return y, gradient.log()
+    ldj = sum_except_batch(gradient.log())
+
+    return y, ldj
 
 
 def inv_rq_spline_transform(
@@ -303,4 +353,7 @@ def inv_rq_spline_transform(
         )
         * denominator_recip.pow(2)
     )
-    return x, gradient_fwd.log().neg()
+
+    ldj = sum_except_batch(gradient_fwd.log().neg())
+
+    return x, ldj

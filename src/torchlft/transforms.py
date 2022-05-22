@@ -33,6 +33,20 @@ class Transform:
         raise NotImplementedError
 
 
+class Tanh(Transform):
+    domain = "reals"
+
+    def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor]:
+        return F.tanh(x)
+
+    def inv(self, y: torch.Tensor) -> tuple[torch.Tensor]:
+        return F.inv_tanh(y)
+
+    @property
+    def n_params(self) -> int:
+        return 0
+
+
 class Translation(Transform):
     domain = "reals"
 

@@ -68,16 +68,13 @@ class CouplingLayer(torch.nn.Module):
     def forward(
         self, x: torch.Tensor, log_prob: torch.Tensor
     ) -> tuple[torch.Tensor]:
-        params = self.net_forward(x.mul(self._condition_mask))
-        params = params.mul(self._transform_mask)
-        params = params.add(self._identity_params.mul(~self._transform_mask))
-        """params = (
+        params = (
             self.net_forward(x.mul(self._condition_mask))
             .mul(self._transform_mask)
             .add(self._identity_params.mul(~self._transform_mask))
-        )"""
+        )
         y, log_det_jacob = self._transform(x, params)
-        log_prob.sub_(log_det_jacob.flatten(start_dim=1).sum(dim=1))
+        log_prob.sub_(log_det_jacob)
         return y, log_prob
 
     def inverse(
@@ -89,5 +86,5 @@ class CouplingLayer(torch.nn.Module):
             .add(self._identity_params.mul(~self._transform_mask))
         )
         x, log_det_jacob = self._transform.inv(y, params)
-        log_prob.sub_(log_det_jacob.flatten(start_dim=1).sum(dim=1))
+        log_prob.sub_(log_det_jacob)
         return x, log_det_jacob
