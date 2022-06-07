@@ -4,3 +4,5 @@ __pycache__/
 .tox/
 .coverage
 .hypothesis
+docs/_build
+docs/source/torchlft.*

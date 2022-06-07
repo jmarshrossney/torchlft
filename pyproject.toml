@@ -12,6 +12,7 @@ license = "GPLv3"
 [tool.poetry.dependencies]
 python = "^3.8"
 torch = "^1.11.0"
+torchnf = {git = "https://github.com/marshrossney/torchnf.git", rev="main"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
@@ -21,7 +22,6 @@ flake8 = "^4.0.1"
 coverage = "^6.3.2"
 ipython = "^8.3.0"
 numpy = "^1.22.3"
-Sphinx = "^4.5.0"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -33,10 +33,12 @@ exclude = '''
 (
   /(
       \.git
-    | \.mypy_cache
-    | \.nox
+    | \.github
+    | \.pytest_cache
+    | \.hypothesis
     | \.tox
     | \.venv
+    | docs
     | __pycache__
   )/
 )

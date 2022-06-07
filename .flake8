@@ -7,7 +7,10 @@ exclude =
     pyproject.toml
     poetry.lock
     .git
+    .github
     .venv
-    .nox
     .tox
+    .pytest_cache
+    .hypothesis
+    docs
     __pycache__
