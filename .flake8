@@ -1,0 +1,16 @@
+[flake8]
+ignore = 
+    E731
+    W503
+    F401
+exclude = 
+    pyproject.toml
+    poetry.lock
+    .git
+    .github
+    .venv
+    .tox
+    .pytest_cache
+    .hypothesis
+    docs
+    __pycache__
