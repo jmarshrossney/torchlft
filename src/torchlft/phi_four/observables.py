@@ -142,7 +142,7 @@ not be performed even though 'n_bootstrap_sample > 0'"
         where :math:`\tilde{G}(q, \omega)` is the Fourier transform of the
         correlator.
 
-        Reference: :doi:`10.1103/PhysRevD.58.105007`
+        Reference: `https://doi.org/10.1103/PhysRevD.58.105007`_
         """
         g_tilde_00 = self.susceptibility
         g_tilde_10 = self._correlator.mul(

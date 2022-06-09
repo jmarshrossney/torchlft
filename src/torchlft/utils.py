@@ -46,4 +46,4 @@ def nearest_neighbour_kernel(lattice_dim) -> torch.Tensor:
     for shift, dim in itertools.product([+1, -1], range(lattice_dim)):
         nn_kernel.add_(identity_kernel.roll(shift, dim))
 
-    return nn_kernel
+    return nn_kernel.view(1, 1, *nn_kernel.shape)

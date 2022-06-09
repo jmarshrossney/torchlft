@@ -1036,8 +1036,8 @@ torchmetrics = "^0.9.1"
 [package.source]
 type = "git"
 url = "https://github.com/marshrossney/torchnf.git"
-reference = "develop"
-resolved_reference = "f68704d0d35ce3092472de7e3bd114635d0be9c9"
+reference = "dev"
+resolved_reference = "697a767d56313532cb523caab1b1e5a1b9c5df81"
 
 [[package]]
 name = "tqdm"
@@ -1134,7 +1134,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "87165b01241e10a8041f644d865e969dfdd1661b50903250ec11e623f3dd2cf2"
+content-hash = "8a3e7d7d6bb090998d1896b89db6214cade606caf4e6b2bd0aa4bbcd1fd8f139"
 
 [metadata.files]
 absl-py = [

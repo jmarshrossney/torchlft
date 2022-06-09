@@ -63,7 +63,7 @@ intersphinx_mapping = {
         "https://pytorch-lightning.readthedocs.io/en/stable",
         None,
     ),
-    "torchnf": ("https://marshrossney.github.io/torchnf", None),
+    "torchnf": ("https://marshrossney.github.io/torchnf/torchnf", None),
 }
 
 # List of patterns, relative to source directory, that match files and
