@@ -487,8 +487,8 @@ tqdm = "^4.64.0"
 [package.source]
 type = "git"
 url = "https://github.com/marshrossney/torchnf.git"
-reference = "main"
-resolved_reference = "aedb57d3ece73750b8298c0bca29d8ae8978fae5"
+reference = "dev"
+resolved_reference = "697a767d56313532cb523caab1b1e5a1b9c5df81"
 
 [[package]]
 name = "tqdm"
@@ -537,7 +537,7 @@ python-versions = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "d5763b409ab4c49be833623a188f114064b6f446f38a7685af855b5d3fc75f64"
+content-hash = "8a3e7d7d6bb090998d1896b89db6214cade606caf4e6b2bd0aa4bbcd1fd8f139"
 
 [metadata.files]
 appnope = [
