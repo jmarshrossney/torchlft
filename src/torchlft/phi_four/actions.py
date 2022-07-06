@@ -139,7 +139,7 @@ class PhiFourActionStandard:
 
     def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
         """Returns the negated action."""
-        return self.action(sample).neg()
+        return self(sample).neg()
 
 
 @dataclasses.dataclass
@@ -161,4 +161,4 @@ class PhiFourActionIsing:
 
     def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
         """Returns the negated action."""
-        return self.action(sample).neg()
+        return self(sample).neg()

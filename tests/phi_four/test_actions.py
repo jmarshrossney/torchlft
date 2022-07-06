@@ -1,6 +1,12 @@
 import torch
 
-from torchlft.phi_four.actions import *
+from torchlft.phi_four.actions import (
+    phi_four_action_standard,
+    phi_four_action_ising,
+    PhiFourActionStandard,
+    PhiFourActionIsing,
+)
+
 
 def test_all_equal_no_quart():
     beta = 1
@@ -18,4 +24,3 @@ def test_all_equal_no_quart():
     assert torch.allclose(i_func, i_cls)
     assert torch.allclose(s_func, i_func)
     assert torch.allclose(s_cls, i_cls)
-    
