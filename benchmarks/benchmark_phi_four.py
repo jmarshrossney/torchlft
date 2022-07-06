@@ -74,7 +74,7 @@ def affine_flow_densenet(checkerboard_mask):
         FlowLayer(
             AffineTransform(),
             MaskedConditioner(
-                net(L ** 2 // 2, L ** 2), mask, mask_mode="index"
+                net(L**2 // 2, L**2), mask, mask_mode="index"
             ),
         )
         for _, mask in zip(range(depth), checkerboard_mask)
@@ -109,7 +109,7 @@ def affine_flow_convnet(checkerboard_mask):
 @pytest.fixture
 def spline_flow_densenet(checkerboard_mask):
     depth = 2
-    half_lattice = L ** 2 // 2
+    half_lattice = L**2 // 2
     net = DenseNet(
         hidden_shape=[72],
         activation="Tanh",

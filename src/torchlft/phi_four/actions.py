@@ -118,8 +118,9 @@ class PhiFourActionStandard:
     """
     Class-based implementation of :func:`phi_four_action_standard`.
 
-    This class can serve as a 'target distribution' in e.g. a Normalizing Flow,
-    through the ``log_prob`` method. See :py:class:`torchnf.abc.TargetDistribution`.
+    This class can serve as a 'target distribution' in e.g. a
+    Normalizing Flow, through the ``log_prob`` method. See
+    :py:class:`torchnf.abc.TargetDistribution`.
     """
 
     m_sq: Union[float, torch.Tensor]
@@ -139,8 +140,9 @@ class PhiFourActionIsing:
     """
     Class-based implementation of :func:`phi_four_action_ising`.
 
-    This class can serve as a 'target distribution' in e.g. a Normalizing Flow,
-    through the ``log_prob`` method. See :py:class:`torchnf.abc.TargetDistribution`.
+    This class can serve as a 'target distribution' in e.g. a
+    Normalizing Flow, through the ``log_prob`` method. See
+    :py:class:`torchnf.abc.TargetDistribution`.
     """
 
     beta: Union[float, torch.Tensor]
