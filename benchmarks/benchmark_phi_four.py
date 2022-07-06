@@ -7,7 +7,7 @@ import torch
 from torchnf.conditioners import MaskedConditioner, SimpleConditioner
 from torchnf.flow import FlowLayer, Composition
 from torchnf.models import BoltzmannGenerator, OptimizerConfig
-from torchnf.networks import DenseNet
+from torchnf.networks import DenseNet, ConvNetCircular
 
 # from torchnf.transformers import AffineTransform
 from torchnf.utils.distribution import diagonal_gaussian, IterableDistribution
@@ -39,6 +39,28 @@ def phi_four_target():
 def checkerboard_mask():
     checkerboard = make_checkerboard([L, L])
     return itertools.cycle([checkerboard, ~checkerboard])
+
+
+@pytest.fixture
+def optimizer():
+    return OptimizerConfig(
+        "Adam",
+        {"lr": 0.001},
+        "CosineAnnealingLR",
+        {"T_max": N_TRAIN},
+    )
+
+
+@pytest.fixture
+def trainer():
+    return pl.Trainer(
+        enable_checkpointing=False,
+        # profiler="simple",
+        max_epochs=1,
+        num_sanity_val_steps=0,
+        check_val_every_n_epoch=2,  # turn off automatic validation
+        # gpus=torch.cuda.device_count(),
+    )
 
 
 # temp fix while torchnf SimpleConditioner is broken
@@ -82,25 +104,26 @@ def affine_flow_densenet(checkerboard_mask):
 
 
 @pytest.fixture
-def optimizer():
-    return OptimizerConfig(
-        "Adam",
-        {"lr": 0.001},
-        "CosineAnnealingLR",
-        {"T_max": N_TRAIN},
+def affine_flow_convnet(checkerboard_mask):
+    depth = 8
+    net = ConvNetCircular(
+        dim=2,
+        hidden_shape=[2, 2],
+        activation="Tanh",
+        kernel_size=3,
+        conv_kwargs=dict(bias=False),
     )
-
-
-@pytest.fixture
-def trainer():
-    return pl.Trainer(
-        enable_checkpointing=False,
-        # profiler="simple",
-        max_epochs=1,
-        num_sanity_val_steps=0,
-        check_val_every_n_epoch=2,  # turn off automatic validation
-        # gpus=torch.cuda.device_count(),
-    )
+    layers = [
+        FlowLayer(
+            AffineTransform(),
+            MaskedConditioner(
+                net(1, 2), mask, mask_mode="mul", create_channel_dim=True
+            ),
+        )
+        for _, mask in zip(range(depth), checkerboard_mask)
+    ]
+    layers.append(GlobalRescaling())
+    return Composition(*layers)
 
 
 def benchmark_affine_flow_densenet(
@@ -112,6 +135,25 @@ def benchmark_affine_flow_densenet(
 ):
     model = BoltzmannGenerator(
         affine_flow_densenet, diagonal_gaussian_prior, phi_four_target
+    )
+    model.configure_training(N_BATCH, N_TRAIN, val_epoch_length=N_VAL)
+
+    optimizer.add_to(model)
+    trainer.fit(model)
+    (metrics,) = trainer.validate(model)
+
+    assert metrics["Validation"]["AcceptanceRate"] > 0.4
+
+
+def benchmark_affine_flow_convnet(
+    diagonal_gaussian_prior,
+    phi_four_target,
+    affine_flow_convnet,
+    optimizer,
+    trainer,
+):
+    model = BoltzmannGenerator(
+        affine_flow_convnet, diagonal_gaussian_prior, phi_four_target
     )
     model.configure_training(N_BATCH, N_TRAIN, val_epoch_length=N_VAL)
 
