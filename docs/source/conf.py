@@ -64,6 +64,7 @@ intersphinx_mapping = {
         "https://pytorch-lightning.readthedocs.io/en/stable",
         None,
     ),
+    "torchnf": ("https://marshrossney.github.io/torchnf/torchnf", None),
 }
 
 # Add any paths that contain templates here, relative to this directory.

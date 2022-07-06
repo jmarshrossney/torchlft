@@ -12,7 +12,7 @@ license = "GPLv3"
 [tool.poetry.dependencies]
 python = "^3.8"
 torch = "^1.11.0"
-torchnf = {git = "https://github.com/marshrossney/torchnf.git", rev="main"}
+torchnf = {git = "https://github.com/marshrossney/torchnf.git", rev="develop"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
@@ -25,6 +25,12 @@ numpy = "^1.22.3"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+python_files = ["test*.py", "benchmark*.py"]
+python_functions = ["test", "benchmark"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pytorch_lightning.utilities.warnings.PossibleUserWarning",
+]
 
 [tool.black]
 line-length = 79
