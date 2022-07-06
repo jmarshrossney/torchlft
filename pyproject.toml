@@ -12,7 +12,7 @@ license = "GPLv3"
 [tool.poetry.dependencies]
 python = "^3.8"
 torch = "^1.11.0"
-torchnf = {git = "https://github.com/marshrossney/torchnf.git", rev="develop"}
+torchnf = {git = "https://github.com/marshrossney/torchnf.git", rev="fix-spline"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"

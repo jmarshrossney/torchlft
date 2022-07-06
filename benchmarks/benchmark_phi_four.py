@@ -8,8 +8,7 @@ from torchnf.conditioners import MaskedConditioner, SimpleConditioner
 from torchnf.flow import FlowLayer, Composition
 from torchnf.models import BoltzmannGenerator, OptimizerConfig
 from torchnf.networks import DenseNet, ConvNetCircular
-
-# from torchnf.transformers import AffineTransform
+from torchnf.transformers import Rescaling, RQSplineTransform
 from torchnf.utils.distribution import diagonal_gaussian, IterableDistribution
 
 from torchlft.phi_four.actions import PhiFourActionIsing
@@ -63,30 +62,12 @@ def trainer():
     )
 
 
-# temp fix while torchnf SimpleConditioner is broken
-class GlobalRescaling(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.log_scale = torch.nn.Parameter(torch.tensor([0.0]))
-
-    def forward(self, x, context):
-        y = x.mul(self.log_scale.abs().neg().exp())
-        ldj = (
-            torch.ones_like(y)
-            .mul(self.log_scale.abs().neg())
-            .flatten(start_dim=1)
-            .sum(dim=1)
-        )
-        return y, ldj
-
-
 @pytest.fixture
 def affine_flow_densenet(checkerboard_mask):
     depth = 8
     net = DenseNet(
         hidden_shape=[72],
         activation="Tanh",
-        # skip_final_activation=True,
         linear_kwargs=dict(bias=False),
     )
     layers = [
@@ -98,8 +79,7 @@ def affine_flow_densenet(checkerboard_mask):
         )
         for _, mask in zip(range(depth), checkerboard_mask)
     ]
-    # layers.append(FlowLayer(Rescaling(), SimpleConditioner([0])))
-    layers.append(GlobalRescaling())
+    layers.append(FlowLayer(Rescaling(), SimpleConditioner([0])))
     return Composition(*layers)
 
 
@@ -122,7 +102,35 @@ def affine_flow_convnet(checkerboard_mask):
         )
         for _, mask in zip(range(depth), checkerboard_mask)
     ]
-    layers.append(GlobalRescaling())
+    layers.append(FlowLayer(Rescaling(), SimpleConditioner([0])))
+    return Composition(*layers)
+
+
+@pytest.fixture
+def spline_flow_densenet(checkerboard_mask):
+    depth = 2
+    half_lattice = L ** 2 // 2
+    net = DenseNet(
+        hidden_shape=[72],
+        activation="Tanh",
+        skip_final_activation=True,
+    )
+    transformers = [
+        RQSplineTransform(n_segments=8, interval=[-5, 5]) for _ in range(depth)
+    ]
+    conditioners = [
+        MaskedConditioner(
+            net(half_lattice, half_lattice * transformer.n_params),
+            mask,
+            mask_mode="index",
+        )
+        for transformer, mask in zip(transformers, checkerboard_mask)
+    ]
+    layers = [
+        FlowLayer(transformer, conditioner)
+        for transformer, conditioner in zip(transformers, conditioners)
+    ]
+    layers.append(FlowLayer(Rescaling(), SimpleConditioner([0])))
     return Composition(*layers)
 
 
@@ -162,3 +170,22 @@ def benchmark_affine_flow_convnet(
     (metrics,) = trainer.validate(model)
 
     assert metrics["Validation"]["AcceptanceRate"] > 0.4
+
+
+def benchmark_spline_flow_densenet(
+    diagonal_gaussian_prior,
+    phi_four_target,
+    spline_flow_densenet,
+    optimizer,
+    trainer,
+):
+    model = BoltzmannGenerator(
+        spline_flow_densenet, diagonal_gaussian_prior, phi_four_target
+    )
+    model.configure_training(N_BATCH, N_TRAIN, val_epoch_length=N_VAL)
+
+    optimizer.add_to(model)
+    trainer.fit(model)
+    (metrics,) = trainer.validate(model)
+
+    assert metrics["Validation"]["AcceptanceRate"] > 0.65
