@@ -1,12 +1,6 @@
-import dataclasses
-from typing import Optional, Union
-
 import torch
 
-import torchnf.distributions
-
-import torchlft.phi_four.actions
-import torchlft.utils
+import torchlft.common.utils
 
 
 class FreeScalarDistribution(torch.distributions.MultivariateNormal):

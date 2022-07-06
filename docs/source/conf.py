@@ -17,8 +17,6 @@ import torchlft
 
 sys.path.insert(0, os.path.abspath("../../src"))
 
-html_static_path = ["_static"]
-
 
 # -- Project information -----------------------------------------------------
 
@@ -55,6 +53,7 @@ napoleon_include_special_with_doc = True
 extlinks = {
     "torchdocs": ("https://pytorch.org/docs/stable/%s.html", "torch.%s"),
     "arxiv": ("https://arxiv.org/abs/%s", "arvix:%s"),
+    "doi": ("https://doi.org/%s", "%s"),
 }
 
 # Intersphinx
@@ -64,11 +63,8 @@ intersphinx_mapping = {
         "https://pytorch-lightning.readthedocs.io/en/stable",
         None,
     ),
-    "torchnf": ("https://marshrossney.github.io/torchnf/torchnf", None),
+    "torchnf": ("https://marshrossney.github.io/torchnf", None),
 }
-
-# Add any paths that contain templates here, relative to this directory.
-templates_path = ["_templates"]
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -82,8 +78,3 @@ exclude_patterns = []
 # a list of builtin themes.
 #
 html_theme = "sphinx_rtd_theme"
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ["_static"]

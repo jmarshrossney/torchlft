@@ -3,6 +3,13 @@ from typing import Union
 
 import torch
 
+__all__ = [
+    "phi_four_action_standard",
+    "phi_four_action_ising",
+    "PhiFourActionStandard",
+    "PhiFourActionIsing",
+]
+
 
 # TODO torchscript
 def _phi_four_action(
@@ -126,7 +133,7 @@ class PhiFourActionStandard:
     m_sq: Union[float, torch.Tensor]
     lam: Union[float, torch.Tensor]
 
-    def action(self, sample: torch.Tensor) -> torch.Tensor:
+    def __call__(self, sample: torch.Tensor) -> torch.Tensor:
         """Calls ``phi_four_action_standard`` with the sample provided."""
         return phi_four_action_standard(sample, self.m_sq, self.lam)
 
@@ -148,7 +155,7 @@ class PhiFourActionIsing:
     beta: Union[float, torch.Tensor]
     lam: Union[float, torch.Tensor]
 
-    def action(self, sample: torch.Tensor) -> torch.Tensor:
+    def __call__(self, sample: torch.Tensor) -> torch.Tensor:
         """Calls ``phi_four_action_ising`` with the sample provided."""
         return phi_four_action_ising(sample, self.beta, self.lam)
 

@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import torch
 
 from torchnf.conditioners import MaskedConditioner, SimpleConditioner
-from torchnf.flow import FlowLayer, Composition
+from torchnf.layers import FlowLayer, Composition
 from torchnf.models import BoltzmannGenerator, OptimizerConfig
 from torchnf.networks import DenseNet, ConvNetCircular
 from torchnf.transformers import Rescaling, RQSplineTransform
