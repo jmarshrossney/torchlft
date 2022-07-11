@@ -1,6 +1,8 @@
+from collections.abc import Iterable
 import dataclasses
 from typing import Union
 
+from jsonargparse import PositiveInt
 import torch
 
 __all__ = [
@@ -35,7 +37,6 @@ def _phi_four_action(
 
     # Sum over lattice sites
     return action_density.flatten(start_dim=1).sum(dim=1)
-
 
 def phi_four_action_standard(
     sample: torch.Tensor,
