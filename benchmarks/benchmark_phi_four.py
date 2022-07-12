@@ -11,9 +11,9 @@ from torchnf.networks import DenseNet, ConvNetCircular
 from torchnf.transformers import Rescaling, RQSplineTransform
 from torchnf.utils.distribution import diagonal_gaussian, IterableDistribution
 
-from torchlft.phi_four.actions import PhiFourActionIsing
+from torchlft.phi_four.actions import PhiFourAction
 from torchlft.phi_four.flows import AffineTransform
-from torchlft.common.utils import make_checkerboard
+from torchlft.utils import make_checkerboard
 
 L = 6  # lattice length
 BETA = 0.537
@@ -31,7 +31,7 @@ def diagonal_gaussian_prior():
 
 @pytest.fixture
 def phi_four_target():
-    return PhiFourActionIsing(beta=BETA, lam=LAM)
+    return PhiFourAction(beta=BETA, lamda=LAM)
 
 
 @pytest.fixture
