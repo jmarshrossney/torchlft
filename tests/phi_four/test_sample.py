@@ -1,4 +1,4 @@
-from hypothesis import given, settings, strategies as st
+from hypothesis import assume, given, settings, strategies as st
 import math
 import pytest
 import torch
@@ -8,8 +8,10 @@ from torchlft.sample.sampler import Sampler
 
 
 @given(lattice_shape=st.lists(st.integers(2, 4), min_size=1, max_size=4))
-@settings(max_examples=10, deadline=400)
+@settings(max_examples=10, deadline=500)
 def test_rw_metropolis_runs(lattice_shape):
+    assume(math.prod(lattice_shape) <= 64) # otherwise it takes too long
+    
     model = RandomWalkMetropolis(
         lattice_shape, step_size=0.1, beta=0.5, lamda=0.5
     )
