@@ -15,12 +15,12 @@ class Sampler:
 
     def _step(self, model: SamplingAlgorithm) -> None:
         model()
-        # model.on_step_end()
+        model.on_step()
 
     def _sweep(self, model: SamplingAlgorithm) -> None:
         for _ in range(model.sweep_length):
             self._step(model)
-        # model.on_sweep_end
+        model.on_sweep()
 
     def _sample(self, model: SamplingAlgorithm, interval: PositiveInt) -> None:
         if hasattr(model, "sweep_length"):
@@ -30,7 +30,7 @@ class Sampler:
 
         for _ in range(interval):
             update(model)
-        # model.on_sample()
+        model.on_sample()
 
     def thermalise(
         self, model: SamplingAlgorithm, steps_or_sweeps: PositiveInt
@@ -64,7 +64,6 @@ class Sampler:
                 configs[i] = model.state
                 pbar.set_postfix(model.pbar_stats)
 
-        return configs
+        # TODO: should run model.something() here to compute autocorrelations
 
-    def autocorrelation(self):
-        pass
+        return configs

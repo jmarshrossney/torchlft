@@ -7,7 +7,7 @@ import torch
 
 
 def metropolis_test(delta_log_weight: torch.Tensor) -> bool:
-    return delta_log_weight > 0 or delta_log_weight.exp() > torch.rand(1)
+    return delta_log_weight > 0 or math.exp(delta_log_weight) > torch.rand(1)
 
 
 def autocorrelation(observable: torch.Tensor) -> torch.Tensor:
@@ -22,7 +22,7 @@ def autocorrelation(observable: torch.Tensor) -> torch.Tensor:
     return autocorrelation
 
 
-def build_neighbour_list(lattice_shape: Iterable[PositiveInt]) -> torch.Tensor:
+def build_neighbour_list(lattice_shape: Iterable[PositiveInt]) -> list[list[PositiveInt]]:
     indices = torch.arange(math.prod(lattice_shape)).view(lattice_shape)
     lattice_dims = range(len(lattice_shape))
     neighbour_indices = torch.stack(
@@ -33,15 +33,3 @@ def build_neighbour_list(lattice_shape: Iterable[PositiveInt]) -> torch.Tensor:
         dim=1,
     )
     return neighbour_indices.tolist()
-
-
-def random_site_generator(
-    lattice_shape: Iterable[PositiveInt],
-) -> tuple[PositiveInt, list[PositiveInt]]:
-    neighbour_indices = build_neighbour_list(lattice_shape)
-    lattice_size = math.prod(lattice_shape)
-
-    while True:
-        idx = torch.randint(0, lattice_size, [1]).item()
-        neighbours = neighbour_indices[idx]
-        yield idx, neighbours

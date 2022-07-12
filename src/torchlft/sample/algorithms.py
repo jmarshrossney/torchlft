@@ -11,13 +11,12 @@ import torch
 from jsonargparse.typing import PositiveInt, NonNegativeInt, OpenUnitInterval
 import tqdm
 
-from torchlft.sample.utils import metropolis_test, random_site_generator
+from torchlft.sample.utils import metropolis_test
 
 log = logging.getLogger(__name__)
 
 __all__ = [
     "SamplingAlgorithm",
-    "RandomWalkMetropolis",
     "MCMCReweighting",
 ]
 
@@ -96,38 +95,14 @@ class SamplingAlgorithm(torch.nn.Module):
         """
         raise NotImplementedError
 
+    def on_step(self) -> None:
+        ...
 
-class RandomWalkMetropolis(SamplingAlgorithm):
-    def __init__(
-        self, lattice_shape: Iterable[PositiveInt], **hparams
-    ) -> None:
-        super().__init__(lattice_shape=lattice_shape, **hparams)
-        self.random_site_generator = random_site_generator(lattice_shape)
+    def on_sweep(self) -> None:
+        ...
 
-    @property
-    def sweep_length(self) -> PositiveInt:
-        return math.prod(self.lattice_shape)
-
-    def update(self, site: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError
-
-    def forward(self) -> Union[bool, None]:
-        site_idx, neighbour_idx = next(self.random_site_generator)
-
-        site, *neighbours = self.state.view(-1)[[site_idx, *neighbour_idx]]
-
-        curr_local_action = self.local_action(site, neighbours)
-
-        site = self.update(site)
-
-        new_local_action = self.local_action(site, neighbours)
-
-        delta_log_weight = new_local_action - curr_local_action
-        if metropolis_test(delta_log_weight):
-            self.state.view(-1)[site_idx] = site
-            return True
-        else:
-            return False
+    def on_sample(self) -> None:
+        ...
 
 
 class MCMCReweighting(SamplingAlgorithm):
