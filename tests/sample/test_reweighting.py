@@ -28,16 +28,37 @@ def algorithm(simple_generator):
 
 
 @pytest.fixture
-def sampler():
-    return Sampler()
+def sampler(algorithm):
+    return Sampler(algorithm)
 
 
-def test_thermalise(sampler, algorithm):
-    sampler.thermalise(algorithm, 10)
-    assert algorithm.global_step == 10
+def test_algorithm(algorithm):
+    assert algorithm.global_step is None
+    assert algorithm.transitions is None
+    assert algorithm.state is None
+
+    algorithm.init()
+
+    assert algorithm.global_step == 0
+    assert algorithm.transitions == 0
+    assert isinstance(algorithm.state, torch.Tensor)
+
+    assert "state" in algorithm.state_dict()
+
+    algorithm.init()
+
+
+def test_thermalise(sampler):
+    sampler.thermalise(10)
+    assert sampler.algorithm.global_step == 10
 
 
 def test_forward_hooks(algorithm):
+    assert algorithm.global_step is None
+    assert algorithm.transitions is None
+
+    algorithm.init()
+
     assert algorithm.global_step == 0
     assert algorithm.transitions == 0
 
@@ -51,6 +72,6 @@ def test_forward_hooks(algorithm):
     assert algorithm.transitions == 1
 
 
-def test_sample(sampler, algorithm):
-    out = sampler.sample(algorithm, 10)
+def test_sample(sampler):
+    out = sampler.sample(10)
     assert len(out) == 10

@@ -98,7 +98,11 @@ def _local_action(
     Computes the local Phi^4 action for a single-component scalar field.
     """
     beta, alpha, lamda = coeffs
-    return -beta * phi * sum(neighbours) + alpha * phi ** 2 + lamda * phi ** 4
+    return (
+        -0.5 * beta * phi * sum(neighbours)
+        + alpha * phi**2
+        + lamda * phi**4
+    )
 
 
 def phi_four_action(

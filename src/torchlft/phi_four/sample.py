@@ -16,16 +16,13 @@ class RandomWalkMetropolis(SamplingAlgorithm):
         step_size: PositiveFloat,
         **couplings: dict[str, float],
     ) -> None:
-        super().__init__(
-            lattice_shape=lattice_shape,
-            step_size=step_size,
-            couplings=couplings,
-        )
+        super().__init__()
+        self.lattice_shape = lattice_shape
+        self.step_size = step_size
+        self.couplings = couplings
+
         self.lattice_size = math.prod(lattice_shape)
         self.neighbour_list = build_neighbour_list(lattice_shape)
-
-        # This is just a view of the original state
-        self.flattened_state = self.state.view(-1)
 
     @property
     def sweep_length(self) -> PositiveInt:
@@ -33,6 +30,9 @@ class RandomWalkMetropolis(SamplingAlgorithm):
 
     def init(self) -> None:
         self.state = torch.empty(self.lattice_shape).normal_().flatten()
+
+        # This is just a view of the original state
+        self.flattened_state = self.state.view(-1)
 
     def forward(self) -> bool:
         site_idx = torch.randint(0, self.lattice_size, [1]).item()
@@ -46,12 +46,13 @@ class RandomWalkMetropolis(SamplingAlgorithm):
         old_action = local_action(phi_old, neighbours, **self.couplings)
         new_action = local_action(phi_new, neighbours, **self.couplings)
 
-        if metropolis_test(new_action - old_action):
+        if metropolis_test(old_action - new_action):
             self.flattened_state[site_idx] = phi_new
             return True
         else:
             return False
 
 
+# TODO
 class HamiltonianMonteCarlo(SamplingAlgorithm):
     pass

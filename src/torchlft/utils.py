@@ -37,6 +37,7 @@ def laplacian_2d(lattice_length: int) -> torch.Tensor:
     lapl_2d = torch.kron(lapl_1d, identity) + torch.kron(identity, lapl_1d)
     return lapl_2d
 
+
 def nearest_neighbour_kernel(lattice_dim) -> torch.Tensor:
     identity_kernel = torch.zeros([3 for _ in range(lattice_dim)])
     identity_kernel.view(-1)[pow(3, lattice_dim) // 2] = 1

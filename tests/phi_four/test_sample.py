@@ -10,15 +10,15 @@ from torchlft.sample.sampler import Sampler
 @given(lattice_shape=st.lists(st.integers(2, 4), min_size=1, max_size=4))
 @settings(max_examples=10, deadline=500)
 def test_rw_metropolis_runs(lattice_shape):
-    assume(math.prod(lattice_shape) <= 64) # otherwise it takes too long
-    
-    model = RandomWalkMetropolis(
+    assume(math.prod(lattice_shape) <= 64)  # otherwise it takes too long
+
+    algorithm = RandomWalkMetropolis(
         lattice_shape, step_size=0.1, beta=0.5, lamda=0.5
     )
-    sampler = Sampler()
+    sampler = Sampler(algorithm)
 
-    sampler.thermalise(model, 10)
-    sampler.sample(model, 10)
+    sampler.thermalise(10)
+    sampler.sample(10)
 
     sweep = math.prod(lattice_shape)
-    assert model.global_step == 20 * sweep
+    assert algorithm.global_step == 20 * sweep
