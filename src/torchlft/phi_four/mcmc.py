@@ -1,10 +1,11 @@
 import torch
 
+
 def hmc(phi: torch.Tensor, action, *, tau: float, n_steps: int) -> bool:
     phi_cp = torch.clone(phi).detach()
 
     phi.requires_grad = True
-    phi.grad = torch.zeros(phi.shape) # initialize gradient
+    phi.grad = torch.zeros(phi.shape)  # initialize gradient
 
     # Initialize momenta
     mom = torch.randn(phi.shape)
@@ -13,7 +14,7 @@ def hmc(phi: torch.Tensor, action, *, tau: float, n_steps: int) -> bool:
     H_0 = hamiltonian(mom, phi, action)
 
     # Leapfrog integrator
-    leapfrog(mom, phi, action, tau = tau, n_steps = n_steps)
+    leapfrog(mom, phi, action, tau=tau, n_steps=n_steps)
 
     # Final Hamiltonian
     dH = hamiltonian(mom, phi, action) - H_0
@@ -21,7 +22,7 @@ def hmc(phi: torch.Tensor, action, *, tau: float, n_steps: int) -> bool:
     if dH > 0:
         if torch.rand(1).item() >= torch.exp(-torch.Tensor([dH])).item():
             with torch.no_grad():
-                phi[:] = phi_cp # element-wise assignment
+                phi[:] = phi_cp  # element-wise assignment
             return False
 
     return True
@@ -38,15 +39,15 @@ def hamiltonian(mom, phi, action):
 
 def leapfrog(mom, phi, action, *, tau, n_steps):
     dt = tau / n_steps
-    
+
     load_action_gradient(phi, action)
     mom -= 0.5 * dt * phi.grad
 
     for i in range(n_steps):
         with torch.no_grad():
             phi += dt * mom
-        
-        if i == n_steps-1:
+
+        if i == n_steps - 1:
             load_action_gradient(phi, action)
             mom -= 0.5 * dt * phi.grad
         else:
@@ -56,13 +57,13 @@ def leapfrog(mom, phi, action, *, tau, n_steps):
 
 def load_action_gradient(phi, action):
     """
-    Passes `phi` through fucntion `action`and loads the gradient with respect to
-    the initial fields into `phi.grad`, without overwriting `phi`.
+    Passes `phi` through fucntion `action`and loads the gradient with respect
+    to the initial fields into `phi.grad`, without overwriting `phi`.
     """
     phi.grad.zero_()
-    
+
     S = action(phi)
-    
+
     external_grad_S = torch.ones(S.shape)
-    
+
     S.backward(gradient=external_grad_S)

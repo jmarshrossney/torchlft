@@ -165,4 +165,4 @@ class OnePointObservables:
         self.magnetization = self._compute_magnetization(sample)
 
     def _compute_magnetization(self, sample):
-        return sample.mean(axis=(2,3))
+        return sample.mean(axis=(2, 3))
