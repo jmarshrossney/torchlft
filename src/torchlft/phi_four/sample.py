@@ -78,7 +78,8 @@ class HamiltonianMonteCarlo(SamplingAlgorithm):
 
         self.lattice_size = math.prod(lattice_shape)
 
-        mass_matrix = mass_matrix or torch.eye(self.lattice_size)
+        if mass_matrix is None:
+            mass_matrix = torch.eye(self.lattice_size)
         self.momentum_distribution = torch.distributions.MultivariateNormal(
             loc=torch.zeros(self.lattice_size), covariance_matrix=mass_matrix
         )
@@ -105,8 +106,10 @@ class HamiltonianMonteCarlo(SamplingAlgorithm):
         state.grad = None
         with torch.enable_grad():
             self.potential(state).backward()
+        force = state.grad
         state.requires_grad_(False)
-        return state.grad
+        state.grad = None
+        return force
 
     def forward(self) -> bool:
 

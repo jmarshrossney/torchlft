@@ -23,16 +23,16 @@ def hmc(phi: torch.Tensor, action, *, tau: float, n_steps: int) -> bool:
         if torch.rand(1).item() >= torch.exp(-torch.Tensor([dH])).item():
             with torch.no_grad():
                 phi[:] = phi_cp  # element-wise assignment
-            return False
+            return True
 
-    return True
+    return False
 
 
 def hamiltonian(mom, phi, action):
     """
     Computes the Hamiltonian of `hmc` function.
     """
-    H = 0.5 * torch.sum(mom**2) + action(phi)
+    H = 0.5 * torch.sum(mom ** 2) + action(phi)
 
     return H.item()
 
