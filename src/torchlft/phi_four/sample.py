@@ -1,10 +1,14 @@
 from collections.abc import Iterable
 import math
+from typing import Optional
 
 from jsonargparse.typing import PositiveInt, PositiveFloat
 import torch
 
-from torchlft.phi_four.actions import phi_four_action_local as local_action
+from torchlft.phi_four.actions import (
+    phi_four_action,
+    phi_four_action_local,
+)
 from torchlft.sample.algorithms import SamplingAlgorithm
 from torchlft.sample.utils import build_neighbour_list, metropolis_test
 
@@ -29,7 +33,7 @@ class RandomWalkMetropolis(SamplingAlgorithm):
         return self.lattice_size
 
     def init(self) -> None:
-        self.state = torch.empty(self.lattice_shape).normal_().flatten()
+        self.state = torch.empty(self.lattice_shape).normal_(0, 1)
 
         # This is just a view of the original state
         self.flattened_state = self.state.view(-1)
@@ -43,8 +47,12 @@ class RandomWalkMetropolis(SamplingAlgorithm):
         ]
         phi_new = phi_old + torch.randn(1).item() * self.step_size
 
-        old_action = local_action(phi_old, neighbours, **self.couplings)
-        new_action = local_action(phi_new, neighbours, **self.couplings)
+        old_action = phi_four_action_local(
+            phi_old, neighbours, **self.couplings
+        )
+        new_action = phi_four_action_local(
+            phi_new, neighbours, **self.couplings
+        )
 
         if metropolis_test(old_action - new_action):
             self.flattened_state[site_idx] = phi_new
@@ -53,6 +61,81 @@ class RandomWalkMetropolis(SamplingAlgorithm):
             return False
 
 
-# TODO
 class HamiltonianMonteCarlo(SamplingAlgorithm):
-    pass
+    def __init__(
+        self,
+        lattice_shape: Iterable[PositiveInt],
+        trajectory_length: PositiveFloat,
+        steps: PositiveInt,
+        mass_matrix: Optional[torch.Tensor] = None,
+        **couplings: dict[str, float],
+    ) -> None:
+        super().__init__()
+        self.lattice_shape = lattice_shape
+        self.trajectory_length = trajectory_length
+        self.steps = steps
+        self.couplings = couplings
+
+        self.lattice_size = math.prod(lattice_shape)
+
+        mass_matrix = mass_matrix or torch.eye(self.lattice_size)
+        self.momentum_distribution = torch.distributions.MultivariateNormal(
+            loc=torch.zeros(self.lattice_size), covariance_matrix=mass_matrix
+        )
+        self.inverse_mass_matrix = self.momentum_distribution.precision_matrix
+
+        # TODO: this is a bit hacky
+        self.potential = lambda state: phi_four_action(
+            state.view([1, *self.lattice_shape]), **self.couplings
+        )
+
+        # TODO: clean up namespace - too many attributes that might get
+        # overridden by someone subclassing and logging things
+
+    def init(self) -> None:
+        self.state = torch.empty(self.lattice_shape).normal_(0, 1)
+
+    def kinetic_term(self, momentum: torch.Tensor) -> torch.Tensor:
+        return 0.5 * torch.dot(
+            momentum, (torch.mv(self.inverse_mass_matrix, momentum))
+        )
+
+    def get_force(self, state: torch.Tensor) -> torch.Tensor:
+        state.requires_grad_()
+        state.grad = None
+        with torch.enable_grad():
+            self.potential(state).backward()
+        state.requires_grad_(False)
+        return state.grad
+
+    def forward(self) -> bool:
+
+        state = self.state.clone().view(-1)
+        momentum = self.momentum_distribution.sample()
+
+        initial_hamiltonian = self.kinetic_term(momentum) + self.potential(
+            state
+        )
+
+        delta = self.trajectory_length / self.steps
+
+        # Begin leapfrog integration
+        momentum -= delta / 2 * self.get_force(state)
+
+        for _ in range(self.steps - 1):
+
+            state = state.addmv(
+                self.inverse_mass_matrix, momentum, alpha=delta
+            )
+            momentum -= delta * self.get_force(state)
+
+        state.addmv_(self.inverse_mass_matrix, momentum, alpha=delta)
+        momentum -= delta / 2 * self.get_force(state)
+
+        final_hamiltonian = self.kinetic_term(momentum) + self.potential(state)
+
+        if metropolis_test(initial_hamiltonian - final_hamiltonian):
+            self.state = state.view(self.lattice_shape)
+            return True
+        else:
+            return False
