@@ -32,7 +32,7 @@ def hamiltonian(mom, phi, action):
     """
     Computes the Hamiltonian of `hmc` function.
     """
-    H = 0.5 * torch.sum(mom ** 2) + action(phi)
+    H = 0.5 * torch.sum(mom**2) + action(phi)
 
     return H.item()
 

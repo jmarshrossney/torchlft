@@ -46,7 +46,7 @@ def test_comparison():
 
     torch.set_rng_state(rng_state)
     for _ in range(trajectories):
-        __ = func(phi)
+        func(phi)
 
     assert torch.allclose(phi, cls.state)
 
@@ -67,6 +67,6 @@ def test_comparison():
     assert transitions
 
     for _ in range(trajectories):
-        __ = func(phi)
+        func(phi)
 
     assert not torch.allclose(phi, cls.state)
