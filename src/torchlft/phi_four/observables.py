@@ -158,3 +158,11 @@ not be performed even though 'n_bootstrap_sample > 0'"
         # NOTE: sqrt of negative entries will evaluate to nan
         # use nanmean / tensor[~tensor.isnan].std()
         return xi_sq.sqrt()
+
+
+class OnePointObservables:
+    def __init__(self, sample):
+        self.magnetization = self._compute_magnetization(sample)
+
+    def _compute_magnetization(self, sample):
+        return sample.mean(axis=(2, 3))
