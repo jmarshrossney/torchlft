@@ -28,7 +28,7 @@ class Sampler:
         else:
             self._update = self._step
 
-        self.reset()
+        self.init()
 
     @property
     def algorithm(self) -> SamplingAlgorithm:
@@ -62,7 +62,7 @@ class Sampler:
             self._update()
         self._algorithm.on_sample()
 
-    def reset(self) -> None:
+    def init(self) -> None:
         self._run_idx += 1
         if self._output_dir is not None:
             log_dir = str(self._output_dir / "logs" / f"run_{self._run_idx}")
@@ -97,5 +97,9 @@ class Sampler:
                 pbar.set_postfix(self._algorithm.pbar_stats)
 
         self._algorithm.on_final_sample()
+
+        # NOTE: how important is it to close the logger?
+        if hasattr(self, "_logger"):
+            self._logger.flush()
 
         return configs
