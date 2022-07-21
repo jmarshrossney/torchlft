@@ -12,8 +12,8 @@ from torchnf.transformers import Rescaling, RQSplineTransform
 from torchnf.utils.distribution import diagonal_gaussian, IterableDistribution
 
 from torchlft.phi_four.actions import PhiFourAction
-from torchlft.phi_four.flows import AffineTransform
-from torchlft.utils import make_checkerboard
+from torchlft.phi_four.flows import EquivariantAffineTransform
+from torchlft.utils import alternating_checkerboard_mask
 
 L = 6  # lattice length
 BETA = 0.537
@@ -36,8 +36,7 @@ def phi_four_target():
 
 @pytest.fixture
 def checkerboard_mask():
-    checkerboard = make_checkerboard([L, L])
-    return itertools.cycle([checkerboard, ~checkerboard])
+    return alternating_checkerboard_mask([L, L])
 
 
 @pytest.fixture
@@ -72,7 +71,7 @@ def affine_flow_densenet(checkerboard_mask):
     )
     layers = [
         FlowLayer(
-            AffineTransform(),
+            EquivariantAffineTransform(),
             MaskedConditioner(
                 net(L**2 // 2, L**2), mask, mask_mode="index"
             ),
@@ -95,7 +94,7 @@ def affine_flow_convnet(checkerboard_mask):
     )
     layers = [
         FlowLayer(
-            AffineTransform(),
+            EquivariantAffineTransform(),
             MaskedConditioner(
                 net(1, 2), mask, mask_mode="mul", create_channel_dim=True
             ),

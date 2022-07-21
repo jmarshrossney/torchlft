@@ -4,7 +4,9 @@ import torch
 
 
 def make_checkerboard(lattice_shape: list[int]) -> torch.BoolTensor:
-    """Return a boolean mask that selects 'even' lattice sites."""
+    """
+    Returns a boolean mask that selects 'even' lattice sites.
+    """
     assert all(
         [n % 2 == 0 for n in lattice_shape]
     ), "each lattice dimension should be even"
@@ -19,13 +21,22 @@ def make_checkerboard(lattice_shape: list[int]) -> torch.BoolTensor:
     return checkerboard
 
 
+def alternating_checkerboard_mask(lattice_shape: list[int]) -> itertools.cycle:
+    """
+    Infinite iterator which alternates between even and odd sites of the mask.
+    """
+    checker = make_checkerboard(lattice_shape)
+    return itertools.cycle([checker, ~checker])
+
+
 def laplacian_2d(lattice_length: int) -> torch.Tensor:
-    """Creates a 2d Laplacian matrix.
+    """
+    Creates a 2d Laplacian matrix.
+
     This works by taking the kronecker product of the one-dimensional
     Laplacian matrix with the identity.
-    Notes
-    -----
-    For now, assume a square lattice. Periodic BCs are also assumed.
+
+    For now assumes a square lattice. Periodic BCs are also assumed.
     """
     identity = torch.eye(lattice_length)
     lapl_1d = (

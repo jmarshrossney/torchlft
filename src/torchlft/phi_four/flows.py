@@ -3,7 +3,7 @@ import torch
 import torchnf.transformers
 
 
-class AffineTransform(torchnf.transformers.AffineTransform):
+class EquivariantAffineTransform(torchnf.transformers.AffineTransform):
     r"""
     Performs a pointwise affine transformation of the input tensor.
 
