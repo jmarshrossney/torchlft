@@ -188,3 +188,69 @@ class MCMCReweighting(SamplingAlgorithm):
             return True
         else:
             return False
+
+
+
+class HamiltonianMonteCarlo(SamplingAlgorithm):
+    r"""
+    Hamiltonian (Hybrid) Monte Carlo sampling algorithm.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        # TODO: clean up namespace - too many attributes that might get
+        # overridden by someone subclassing and logging things
+
+    def backup_state(self):
+        ...
+
+    def recover_backup_state(self):
+        ...
+
+    def initialize_momenta(self):
+        ...
+
+    def update_momenta(self, epsilon):
+        ...
+
+    def update_state(self, epsilon):
+        ...
+
+    def hamiltonian(self):
+        ...
+
+    def accept_state(self):
+        ...
+
+    def forward(self) -> bool:
+
+        self.backup_state()
+
+        self.initialize_momenta()
+
+        initial_hamiltonian = self.hamiltonian()
+
+        delta = self.trajectory_length / self.steps
+
+        # First half-step for momenta
+        self.update_momenta(delta / 2)
+
+        # nsteps-1 steps for state and momenta
+        for _ in range(self.steps - 1):
+            self.update_state(delta)
+            self.update_momenta(delta)
+
+        # Last step for fields
+        self.update_state(delta)
+
+        # Last half-step for momenta
+        self.update_momenta(delta / 2)
+
+        final_hamiltonian = self.hamiltonian()
+
+        if metropolis_test(initial_hamiltonian - final_hamiltonian):
+            return True
+        else:
+            self.recover_backup_state()
+            return False

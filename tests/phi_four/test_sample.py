@@ -5,7 +5,7 @@ import torch
 
 from torchlft.phi_four.sample import (
     RandomWalkMetropolis,
-    HamiltonianMonteCarlo,
+    Phi4HMC
 )
 from torchlft.sample.sampler import Sampler
 
@@ -32,7 +32,7 @@ def test_rw_metropolis_runs(lattice_shape):
 def test_hmc_runs(lattice_shape):
     assume(math.prod(lattice_shape) <= 64)
 
-    algorithm = HamiltonianMonteCarlo(
+    algorithm = Phi4HMC(
         lattice_shape, trajectory_length=1.0, steps=2, beta=0.5, lamda=0.5
     )
     sampler = Sampler(algorithm)
@@ -52,7 +52,7 @@ def test_hmc_mass_matrix_runs(lattice_shape):
     _x = torch.rand(n_lattice, n_lattice).tril()
     mass_matrix = torch.mm(_x, _x.T).add(torch.ones(n_lattice).diag())
 
-    algorithm = HamiltonianMonteCarlo(
+    algorithm = Phi4HMC(
         lattice_shape,
         trajectory_length=1.0,
         steps=2,
