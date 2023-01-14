@@ -2,12 +2,12 @@ import torch
 import matplotlib.pyplot as plt
 
 from torchlft.phi_four.actions import phi_four_action
-from torchlft.phi_four.sample import HamiltonianMonteCarlo
+from torchlft.phi_four.sample import Phi4HMC
 from torchlft.sample.sampler import Sampler
 from torchlft.sample.utils import autocorrelation
 
 
-class Model(HamiltonianMonteCarlo):
+class Model(Phi4HMC):
     def init(self) -> None:
         super().init()
         self.magnetisation_history = []
