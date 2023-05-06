@@ -1,16 +1,16 @@
-=======
+========
 torchlft
-=======
+========
 
-A PyTorch library for building Normalizing Flows.
+A PyTorch library for experimenting with Machine Learning based sampling methods for Lattice Field Theories.
 
-Documentation can be found at `marshrossney.github.io/torchlft <https://marshrossney.github.io/torchlft>`_.
+WIP
 
 ------------
 Installation
 ------------
 
-To do.  
+On Linux: pyenv -> (pipx and tox) -> poetry (or by script) -> this
 
 -------------
 Example usage

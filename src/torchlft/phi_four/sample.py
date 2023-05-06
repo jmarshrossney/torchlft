@@ -163,7 +163,6 @@ class HamiltonianMonteCarlo(SamplingAlgorithm):
         return force
 
     def forward(self) -> bool:
-
         state = self.state.clone().view(-1)
         momentum = self.momentum_distribution.sample()
 
@@ -177,7 +176,6 @@ class HamiltonianMonteCarlo(SamplingAlgorithm):
         momentum -= delta / 2 * self.get_force(state)
 
         for _ in range(self.steps - 1):
-
             state = state.addmv(
                 self.inverse_mass_matrix, momentum, alpha=delta
             )

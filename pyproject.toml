@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "torchlft"
 version = "0.1.0"
-description = "A library containing useful tools and definitions for running lattice field theory simulations"
+description = "A PyTorch library for Machine Learning sampling approaches to Lattice Field Theories"
 authors = ["marshrossney <17361029+marshrossney@users.noreply.github.com>"]
 license = "GPLv3"
 
@@ -15,12 +15,14 @@ torch = "^1.11.0"
 torchnf = {git = "https://github.com/marshrossney/torchnf.git", rev="develop"}
 jsonargparse = "^4.10.2"
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.test.dependencies]
 pytest = "^7.1.2"
 hypothesis = "^6.46.2"
+coverage = "^6.3.2"
+
+[tool.poetry.group.dev.dependencies]
 black = "^22.3.0"
 flake8 = "^4.0.1"
-coverage = "^6.3.2"
 ipython = "^8.3.0"
 numpy = "^1.22.3"
 
@@ -35,7 +37,7 @@ filterwarnings = [
 
 [tool.black]
 line-length = 79
-target-version = ['py39']
+target-version = ['py310']
 exclude = '''
 (
   /(
