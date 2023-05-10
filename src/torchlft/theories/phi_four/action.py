@@ -2,7 +2,6 @@ from collections.abc import Iterable
 import dataclasses
 from typing import NamedTuple, Union
 
-from jsonargparse.typing import PositiveInt
 import torch
 
 import torchlft.common.utils

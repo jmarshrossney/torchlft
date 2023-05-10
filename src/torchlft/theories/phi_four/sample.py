@@ -2,7 +2,6 @@ from collections.abc import Iterable
 import math
 from typing import Optional
 
-from jsonargparse.typing import PositiveInt, PositiveFloat
 import torch
 
 from torchlft.phi_four.actions import (
@@ -16,8 +15,8 @@ from torchlft.sample.utils import build_neighbour_list, metropolis_test
 class RandomWalkMetropolis(SamplingAlgorithm):
     def __init__(
         self,
-        lattice_shape: Iterable[PositiveInt],
-        step_size: PositiveFloat,
+        lattice_shape: torch.Size,
+        step_size: float,
         **couplings: dict[str, float],
     ) -> None:
         super().__init__()
@@ -29,7 +28,7 @@ class RandomWalkMetropolis(SamplingAlgorithm):
         self.neighbour_list = build_neighbour_list(lattice_shape)
 
     @property
-    def sweep_length(self) -> PositiveInt:
+    def sweep_length(self) -> int:
         return self.lattice_size
 
     def init(self) -> None:
@@ -108,9 +107,9 @@ class HamiltonianMonteCarlo(SamplingAlgorithm):
 
     def __init__(
         self,
-        lattice_shape: Iterable[PositiveInt],
-        trajectory_length: PositiveFloat,
-        steps: PositiveInt,
+        lattice_shape: torch.Size,
+        trajectory_length: int,
+        steps: int,
         mass_matrix: Optional[torch.Tensor] = None,
         **couplings: dict[str, float],
     ) -> None:

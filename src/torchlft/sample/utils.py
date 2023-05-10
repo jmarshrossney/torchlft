@@ -3,7 +3,6 @@ import itertools
 import math
 from typing import Union
 
-from jsonargparse.typing import PositiveInt
 import torch
 
 
@@ -12,9 +11,9 @@ def metropolis_test(delta_log_weight: Union[float, torch.Tensor]) -> bool:
 
 
 def autocorrelation(
-    observable: Union[Iterable[float], torch.Tensor]
+    observable: Union[Iterable[float], Tensor]
 ) -> torch.Tensor:
-    if not isinstance(observable, torch.Tensor):
+    if not isinstance(observable, Tensor):
         observable = torch.tensor(observable)
     assert observable.dim() == 1
     n = observable.shape[0]
@@ -29,8 +28,8 @@ def autocorrelation(
 
 
 def build_neighbour_list(
-    lattice_shape: Iterable[PositiveInt],
-) -> list[list[PositiveInt]]:
+    lattice_shape: torch.Size,
+) -> list[list[int]]:
     indices = torch.arange(math.prod(lattice_shape)).view(lattice_shape)
     lattice_dims = range(len(lattice_shape))
     neighbour_indices = torch.stack(

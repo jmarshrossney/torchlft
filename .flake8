@@ -3,9 +3,9 @@ ignore =
     E731
     W503
     F401
+    F403
+    F405
 per-file-ignores =
-    tests/*:F403
-    tests/*:F405
 exclude = 
     pyproject.toml
     poetry.lock

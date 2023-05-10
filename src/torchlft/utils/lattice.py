@@ -2,8 +2,10 @@ import itertools
 
 import torch
 
+from torchlft.typing import *
 
-def make_checkerboard(lattice_shape: list[int]) -> torch.BoolTensor:
+
+def make_checkerboard(lattice_shape: list[int]) -> BoolTensor:
     """
     Returns a boolean mask that selects 'even' lattice sites.
     """
@@ -29,7 +31,7 @@ def alternating_checkerboard_mask(lattice_shape: list[int]) -> itertools.cycle:
     return itertools.cycle([checker, ~checker])
 
 
-def laplacian_2d(lattice_length: int) -> torch.Tensor:
+def laplacian_2d(lattice_length: int) -> Tensor:
     """
     Creates a 2d Laplacian matrix.
 
@@ -49,7 +51,7 @@ def laplacian_2d(lattice_length: int) -> torch.Tensor:
     return lapl_2d
 
 
-def nearest_neighbour_kernel(lattice_dim) -> torch.Tensor:
+def nearest_neighbour_kernel(lattice_dim) -> Tensor:
     identity_kernel = torch.zeros([3 for _ in range(lattice_dim)])
     identity_kernel.view(-1)[pow(3, lattice_dim) // 2] = 1
 
