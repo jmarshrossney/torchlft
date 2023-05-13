@@ -5,9 +5,8 @@ import torch
 
 from torchlft.constraints import (
     _Constraint,
-    half_open_interval,
     real,
-    unit_norm,
+    periodic,
 )
 from torchlft.typing import *
 
@@ -42,45 +41,31 @@ class _Field(ABC):
         self._lattice_shape = tuple(lattice_shape)
         self._element_shape = tuple(element_shape)
 
-    @property
-    def batch_size(self) -> int:
+    def __len__(self) -> int:
         return self._batch_size
+
+    """
+    def __repr__(self) -> str:
+        ...
+
+    def __str__(self) -> str:
+        ...
+    """
 
     @property
     def lattice_shape(self) -> torch.Size:
         return self._lattice_shape
 
     @property
-    def lattice_size(self) -> int:
-        return math.prod(self._lattice_shape)
-
-    @property
     def element_shape(self) -> torch.Size:
         return self._element_shape
-
-    @property
-    def element_size(self) -> int:
-        return math.prod(self._element_size)
 
     @property
     def tensor(self) -> Tensor:
         return self._tensor
 
     def clone(self) -> "_Field":
-        return type(self)(
-            self._tensor.clone(),
-            lattice_shape=self._lattice_shape,
-            element_shape=self._element_shape,
-        )
-
-    def new_like(self, data: Tensor) -> "_Field":
-        return type(self)(
-            data,
-            lattice_shape=self._lattice_shape,
-            element_shape=self._element_shape,
-            dtype=self._tensor.dtype,
-            device=self._tensor.device,
-        )
+        return self.new_like(self.tensor.clone())
 
     @property
     @abstractmethod
@@ -96,9 +81,18 @@ class _Field(ABC):
     def from_canonical(cls, other: "_Field") -> "_Field":
         ...
 
+    def new_like(self, data: Tensor) -> "_Field":
+        ...
+
 
 class _ScalarField(_Field):
     domain: _Constraint = real
+
+    def __pos__(self) -> "_ScalarField":
+        return self
+
+    def __neg__(self) -> "_ScalarFielf":
+        return self.new_like(-self.tensor)
 
     def __add__(self, value: Tensor | float) -> "_ScalarField":
         return self.new_like(self.tensor + value)
@@ -126,40 +120,20 @@ class _ScalarField(_Field):
 
 
 class _PeriodicScalarField(_Field):
-    # require 0 for torch.remainder to work!
-    domain: _Constraint = half_open_interval(0, 2 * π)
+    # NOTE: require lower bound = 0 for torch.remainder to work!
+    domain: _Constraint = periodic
 
     def __add__(self, value: Tensor | float) -> "_ScalarField":
-        return self.new_like(
-            torch.remainder(torch.self.tensor + value, self.domain.upper_bound)
-        )
+        return self.new_like(torch.remainder(torch.self.tensor + value, 2 * π))
 
     def __sub__(self, value: Tensor | float) -> "_ScalarField":
-        return self.new_like(
-            torch.remainder(torch.self.tensor - value, self.domain.upper_bound)
-        )
-
-    def __mul__(self, value: Tensor | float) -> "_ScalarField":
-        return self.new_like(
-            torch.remainder(torch.self.tensor * value, self.domain.upper_bound)
-        )
-
-    def __div__(self, value: Tensor | float) -> "_ScalarField":
-        return self.new_like(
-            torch.remainder(torch.self.tensor / value, self.domain.upper_bound)
-        )
+        return self.new_like(torch.remainder(torch.self.tensor - value, 2 * π))
 
     def __iadd__(self, value: Tensor | float) -> None:
-        self.tensor.add_(value).remainder_(self.domain.upper_bound)
+        self.tensor.add_(value).remainder_(2 * π)
 
     def __isub__(self, value: Tensor | float) -> None:
-        self.tensor.sub_(value).remainder_(self.domain.upper_bound)
-
-    def __imul__(self, value: Tensor | float) -> None:
-        self.tensor.mul_(value).remainder_(self.domain.upper_bound)
-
-    def __idiv__(self, value: Tensor | float) -> None:
-        self.tensor.div_(value).remainder_(self.domain.upper_bound)
+        self.tensor.sub_(value).remainder_(2 * π)
 
 
 class CanonicalScalarField(_ScalarField):
@@ -172,12 +146,12 @@ class CanonicalScalarField(_ScalarField):
     ) -> None:
 
         tensor = torch.as_tensor(data, dtype=dtype, device=device)
-        _, *lattice_shape, element_size = tensor.shape
+        _, *lattice_shape = tensor.shape
 
         super().__init__(
             data,
             lattice_shape=lattice_shape,
-            element_shape=(element_size,),
+            element_shape=(1,),
             dtype=dtype,
             device=device,
         )
@@ -194,6 +168,9 @@ class CanonicalScalarField(_ScalarField):
         ), f"Type mismatch: expected {cls} but got {type(other)}"
         return other
 
+    def new_like(self, data: Tensor) -> "CanonicalScalarField":
+        ...
+
 
 class CanonicalPeriodicScalarField(_PeriodicScalarField):
     def __init__(
@@ -205,12 +182,12 @@ class CanonicalPeriodicScalarField(_PeriodicScalarField):
     ) -> None:
 
         tensor = torch.as_tensor(data, dtype=dtype, device=device)
-        _, *lattice_shape, element_size = tensor.shape
+        _, *lattice_shape = tensor.shape
 
         super().__init__(
             data,
             lattice_shape=lattice_shape,
-            element_shape=(element_size,),
+            element_shape=(1,),
             dtype=dtype,
             device=device,
         )
@@ -221,15 +198,48 @@ class CanonicalPeriodicScalarField(_PeriodicScalarField):
     @classmethod
     def from_canonical(
         cls, other: "CanonicalPeriodicScalarField"
-    ) -> "CanonicalScalarField":
+    ) -> "CanonicalPeriodicScalarField":
         assert (
             type(other) is cls
         ), f"Type mismatch: expected {cls} but got {type(other)}"
         return other
 
 
-class CanonicalO2VectorField(_Field):
-    ...
+class CanonicalClassicalSpinField(_Field):
+    def __init__(
+        self,
+        data,
+        *,
+        dtype: Optional[torch.dtype] = None,
+        device: Optional[torch.device] = None,
+    ) -> None:
+
+        tensor = torch.as_tensor(data, dtype=dtype, device=device)
+        _, *lattice_shape, vector_dim = tensor.shape
+
+        super().__init__(
+            data,
+            lattice_shape=lattice_shape,
+            element_shape=(vector_dim,),
+            dtype=dtype,
+            device=device,
+        )
+
+    def __rmatmul__(self, other: Tensor) -> Tensor:
+        rotated = batched_mv(other, self.tensor)
+        return self.new_like(rotated)
+
+    def to_canonical(self) -> "CanonicalPeriodicScalarField":
+        return self
+
+    @classmethod
+    def from_canonical(
+        cls, other: "CanonicalClassicalSpinField"
+    ) -> "CanonicalClassicalSpinField":
+        assert (
+            type(other) is cls
+        ), f"Type mismatch: expected {cls} but got {type(other)}"
+        return other
 
 
 class ComplexScalarField:

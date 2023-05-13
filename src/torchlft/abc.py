@@ -34,7 +34,7 @@ class CompositeField(ABC):
 
 class BaseDensity(Module, metaclass=ABCMeta):
     @abstractmethod
-    def log_density(self, configs: Field) -> Tensor:
+    def action(self, configs: Field) -> Tensor:
         ...
 
     @abstractmethod

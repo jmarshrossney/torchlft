@@ -4,7 +4,7 @@ from typing import NamedTuple, Union
 
 import torch
 
-import torchlft.common.utils
+from torchlft.typing import *
 
 __all__ = [
     "PhiFourCoefficients",
@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-class InvalidParametrisation(Exception):
+class InvalidCouplings(Exception):
     pass
 
 
@@ -71,23 +71,23 @@ def _action(
     coeffs: PhiFourCoefficients,
 ) -> torch.Tensor:
     """Computes the Phi^4 action for a single-component scalar field."""
-    beta, alpha, lamda = coeffs
-    phi = sample
-    action_density = torch.zeros_like(phi)
+    ϕ, β, α, λ = sample, *coeffs
+
+    s = torch.zeros_like(ϕ)
 
     # Nearest neighbour interaction
-    for dim in range(1, phi.dim()):
-        action_density.sub_(phi.mul(phi.roll(-1, dim)).mul(beta))
+    for μ in range(1, ϕ.dim()):
+        s -= β * (ϕ * ϕ.roll(-1, μ))
 
     # phi^2 term
-    phi_sq = phi.pow(2)
-    action_density.add_(phi_sq.mul(alpha))
+    ϕ_sq = ϕ**2
+    s += α * ϕ_sq
 
     # phi^4 term
-    action_density.add_(phi_sq.pow(2).mul(lamda))
+    s += λ * ϕ_sq**2
 
     # Sum over lattice sites
-    return action_density.flatten(start_dim=1).sum(dim=1)
+    return sum_except_batch(s)
 
 
 def _local_action(
@@ -140,10 +140,6 @@ def phi_four_action_local(
 class PhiFourAction:
     """
     Class-based implementation of :func:`phi_four_action`.
-
-    This class can serve as a 'target distribution' in e.g. a
-    Normalizing Flow, through the ``log_prob`` method. See
-    :py:class:`torchnf.abc.TargetDistribution`.
     """
 
     def __init__(self, **couplings: dict[str, float]) -> None:
@@ -156,44 +152,3 @@ class PhiFourAction:
     def __call__(self, sample: torch.Tensor) -> torch.Tensor:
         """Calls ``phi_four_action`` with the sample provided."""
         return _action(sample, self._coeffs)
-
-    def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
-        """Returns the negated action."""
-        return self(sample).neg()
-
-
-class FreeScalarDistribution(torch.distributions.MultivariateNormal):
-    """
-    A distribution representing a non-interacting scalar field.
-    This is a subclass of torch.distributions.MultivariateNormal in which the
-    covariance matrix is specified by the bare mass of the scalar field.
-
-    Args:
-        lattice_length
-            Number of nodes on one side of the square 2-dimensional lattice.
-        m_sq
-            Bare mass, squared.
-    """
-
-    def __init__(self, lattice_length: int, m_sq: float) -> None:
-        # TODO m_sq should be positive and nonzero
-        super().__init__(
-            loc=torch.zeros(lattice_length**2),
-            precision_matrix=(
-                torchlft.utils.laplacian_2d(lattice_length)
-                + torch.eye(lattice_length**2).mul(m_sq)
-            ),
-        )
-        self._lattice_length = lattice_length
-
-    def log_prob(self, sample: torch.Tensor) -> torch.Tensor:
-        """Flattens 2d configurations and calls superclass log_prob."""
-        return super().log_prob(sample.flatten(start_dim=1))
-
-    def rsample(self, sample_shape=torch.Size()) -> torch.Tensor:
-        """Calls superclass rsample and restores 2d geometry."""
-        return (
-            super()
-            .rsample(sample_shape)
-            .view(*sample_shape, self._lattice_length, self._lattice_length)
-        )
