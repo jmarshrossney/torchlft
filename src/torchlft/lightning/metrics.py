@@ -1,10 +1,12 @@
 from abc import ABCMeta
 
 import pytorch_lightning as pl
+import torch
 import torchmetrics
 
 from torchlft.typing import *
 from torchlft.metrics import (
+    metropolis_test,
     shifted_kl_divergence,
     acceptance_rate,
     effective_sample_size,
@@ -59,7 +61,7 @@ class _LogWeightsMetric(torchmetrics.Metric, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class _LogWeightsMetricMCMC(LogWeightMetric):
+class _LogWeightsMetricMCMC(_LogWeightsMetric):
     """
     Base class for metrics arising from a Metropolis-Hastings simulation.
 

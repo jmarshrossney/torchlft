@@ -7,6 +7,7 @@ This is done under the hood by PyTorch Lightning.
 from math import prod, pi as π
 
 import torch
+import torch.linalg as LA
 
 from torchlft.abc import BaseDensity, ScalarField
 from torchlft.constraints import real, periodic, unit_vector
@@ -18,7 +19,7 @@ from torchlft.fields import (
 from torchlft.typing import *
 from torchlft.utils.distribution import expand_iid
 from torchlft.utils.tensor import sum_except_batch
-from torchflt.utils.lattice import laplacian_2d
+from torchlft.utils.lattice import laplacian_2d
 
 
 class IsotropicGaussianBase(BaseDensity):
@@ -62,9 +63,7 @@ class FreeScalarBase(BaseDensity):
         self.lattice_shape = lattice_shape
 
         # Currently this only works for square lattices
-        inverse_covariance = torchlft.utils.lattice.laplacian_2d(
-            L
-        ) + m_sq * torch.eye(L * T)
+        inverse_covariance = laplacian_2d(L) + m_sq * torch.eye(L * T)
 
         self.register_buffer("loc", torch.zeros(L * T))
         self.register_buffer("inverse_covariance", inverse_covariance)

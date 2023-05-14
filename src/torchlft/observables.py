@@ -5,6 +5,7 @@ import torch
 
 from torchlft.abc import Field
 from torchlft.geometry import spherical_triangle_area
+from torchlft.typing import *
 
 
 def magnetisation_sq(sample: CanonicalClassicalSpinField) -> Tensor:
@@ -111,7 +112,7 @@ class _Observables:
         for sample in samples:
             computed.append(func(sample))
 
-        if n_boostrap is not None:
+        if n_bootstrap is not None:
             (sample,) = samples
             for _ in range(n_bootstrap):
                 indices = torch.randint(0, n_batch, [n_batch])

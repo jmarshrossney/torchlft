@@ -1,17 +1,21 @@
-from math import exp, log, pi as π
+from abc import ABC, abstractmethod
+from math import pi as π
+import math
 
 import torch
+import torch.linalg as LA
+import torch.nn.functional as F
 
 from torchlft.abc import Constraint, Transform
 import torchlft.constraints as constraints
-from torchlft.utils.tensor import sum_except_batch, mod_2pi
 from torchlft.typing import *
+from torchlft.utils.tensor import sum_except_batch, mod_2pi, dot
 
 
 class Translation(Transform):
     domain: Constraint = constraints.real
     codomain: Constraint = constraints.real
-    param_constraints: dict[str, Constraint] = {"shift": constraints.real}
+    arg_constraints: dict[str, Constraint] = {"shift": constraints.real}
 
     def __init__(self, shift: Tensor) -> None:
         self.shift = shift
@@ -20,20 +24,21 @@ class Translation(Transform):
     def identity_params(x: Tensor) -> dict[str, Tensor]:
         return {"shift": torch.zeros_like(x)}
 
-    def forward(self, x: Tensor) -> Tensor:
-        return x + self.shift
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        y = x + self.shift
+        ldj = torch.zeros(x.shape[0], device=x.device)
+        return y, ldj
 
-    def inverse(self, y: Tensor) -> Tensor:
-        return y - self.shift
-
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
-        return torch.zeros(x.shape[0], device=x.device)
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
+        x = y - self.shift
+        ldj = torch.zeros(y.shape[0], device=y.device)
+        return x, ldj
 
 
 class Rescaling(Transform):
     domain: Constraint = constraints.real
     codomain: Constraint = constraints.real
-    param_constraints: dict[str, Constraint] = {"log_scale": constraints.real}
+    arg_constraints: dict[str, Constraint] = {"log_scale": constraints.real}
 
     def __init__(self, log_scale: Tensor) -> None:
         self.log_scale = log_scale
@@ -42,20 +47,21 @@ class Rescaling(Transform):
     def identity_params(x: Tensor) -> dict[str, Tensor]:
         return {"log_scale": torch.zeros_like(x)}
 
-    def forward(self, x: Tensor) -> Tensor:
-        return x * self.log_scale.negative().exp()
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        y = x * self.log_scale.exp()
+        ldj = sum_except_batch(self.log_scale)
+        return y, ldj
 
-    def inverse(self, y: Tensor) -> Tensor:
-        return y * self.log_scale.exp()
-
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
-        return sum_except_batch(self.log_scale)
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
+        x = y * self.log_scale.negative().exp()
+        ldj = sum_except_batch(self.log_scale).negative()
+        return x, ldj
 
 
 class AffineTransform(Transform):
     domain: Constraint = constraints.real
     codomain: Constraint = constraints.real
-    param_constraints: dict[str, Constraint] = {
+    arg_constraints: dict[str, Constraint] = {
         "log_scale": constraints.real,
         "shift": constraints.real,
     }
@@ -68,16 +74,17 @@ class AffineTransform(Transform):
     def identity_params(x: Tensor) -> Tensor:
         return {"log_scale": torch.zeros_like(x), "shift": torch.zeros_like(x)}
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         s, t = self.log_scale, self.shift
-        return (x + t) * torch.exp(-s)
+        y = x * torch.exp(s) + t
+        ldj = sum_except_batch(s)
+        return y, ldj
 
-    def inverse(self, y: Tensor) -> Tensor:
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
         s, t = self.log_scale, self.shift
-        return y * torch.exp(s) - t
-
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
-        return sum_except_batch(self.log_scale)
+        x = (y - t) * torch.exp(-s)
+        ldj = sum_except_batch(self.log_scale).negative()
+        return x, ldj
 
 
 class _RQSplineTransform(Transform):
@@ -110,7 +117,7 @@ class _RQSplineTransform(Transform):
         Numerical Analysis, 1983, 3, 141-152
         """
 
-    param_constraints: dict[str, Constraint] = {
+    arg_constraints: dict[str, Constraint] = {
         "widths": constraints.real,
         "heights": constraints.real,
         "derivs": constraints.real,
@@ -200,7 +207,7 @@ class _RQSplineTransform(Transform):
             .repeat([1 for _ in x.shape] + [n_segments])
         )
         derivs = (
-            torch.full_like(x, fill_value=log(exp(1) - 1))
+            torch.full_like(x, fill_value=math.log(math.e - 1))
             .unsqueeze(-1)
             .repeat([1 for _ in x.shape] + [n_segments - 1])
         )
@@ -233,7 +240,9 @@ class _RQSplineTransform(Transform):
 
     def _get_segment(
         self, inputs: Tensor, inverse: bool = False
-    ) -> tuple[Tensor]:
+    ) -> tuple[
+        Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, BoolTensor
+    ]:
         outside_bounds_mask = (inputs < self._lower_bound) | (
             inputs > self._upper_bound
         )
@@ -254,35 +263,35 @@ class _RQSplineTransform(Transform):
 
         return x0, x1, y0, y1, d0, d1, s, outside_bounds_mask
 
-    def _forward_and_gradient(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         # assert list(x.shape) == self.knots_x.shape[:-1]
 
         x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(x)
 
         θx = (x - x0) / (x1 - x0)
 
-        denominator_recip = (
-            s + (d1 + d0 - 2 * s) * θx * (1 - θx)
-        ).reciprocal()
+        denominator = s + (d1 + d0 - 2 * s) * θx * (1 - θx)
 
-        θy = (s * θx**2 + d0 * θx * (1 - θx)) * denominator_recip
+        θy = (s * θx**2 + d0 * θx * (1 - θx)) / denominator
 
         y = y0 + (y1 - y0) * θy
 
         dydx = (
             s**2
             * (d1 * θx**2 + 2 * s * θx * (1 - θx) + d0 * (1 - θx) ** 2)
-            * denominator_recip**2
+            / denominator**2
         )
         # assert torch.all(dydx > 0)
 
-        y[outside_interval_mask] = x[outside_interval_mask]
+        y[outside_bounds_mask] = x[outside_bounds_mask]
         # NOTE: this shouldn't be necessary! Should be 1 by construction
-        dydx[outside_interval_mask] = 1
+        dydx[outside_bounds_mask] = 1
 
-        return y, dydx
+        ldj = sum_except_batch(dydx.log())
 
-    def _inverse_and_gradient(self, y: Tensor) -> Tensor:
+        return y, ldj
+
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
         # assert list(y.shape) == self.knots_y.shape[:-1]
 
         x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(
@@ -299,42 +308,19 @@ class _RQSplineTransform(Transform):
 
         x = x0 + (x1 - x0) * θx
 
-        denominator_recip = (
-            s + (d1 + d0 - 2 * s) * alpha * (1 - alpha)
-        ).reciprocal()
+        denominator = s + (d1 + d0 - 2 * s) * θx * (1 - θx)
 
         dydx = (
             s**2
             * (d1 * θx**2 + 2 * s * θx * (1 - θx) + d0 * (1 - θx) ** 2)
-            * denominator_recip**2
+            / denominator**2
         )
-        assert torch.all(dydx > 0)
 
-        x[outside_interval_mask] = y[outside_interval_mask]
-        dydx[outside_interval_mask] = 1
+        x[outside_bounds_mask] = y[outside_bounds_mask]
+        dydx[outside_bounds_mask] = 1
 
-        return x, dydx
+        ldj = sum_except_batch(dydx.log()).negative()
 
-    def forward(self, x: Tensor) -> Tensor:
-        y, _ = self._forward_and_gradient(x)
-        return y
-
-    def inverse(self, y: Tensor) -> Tensor:
-        x, _ = self._inverse_and_gradient(y)
-        return x
-
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
-        _, dydx = self._forward_and_gradient(x)
-        return sum_except_batch(dydx.log())
-
-    def forward_and_ldj(self, x: Tensor) -> Tensor:
-        y, dydx = self._forward_and_gradient(x)
-        ldj = sum_except_batch(dydx.log())
-        return y, ldj
-
-    def inverse_and_ldj(self, y: Tensor) -> Tensor:
-        x, dydx = self._inverse_and_gradient(x)
-        ldj = sum_except_batch(dydx.log().negative())
         return x, ldj
 
 
@@ -374,11 +360,11 @@ class CircularRQSplineTransform(_RQSplineTransform):
 class BoundedRQSplineTransform(_RQSplineTransform):
     @property
     def domain(self) -> Constraint:
-        return OpenInterval(self.lower_bound, self._upper_bound)
+        return constraints.OpenInterval(self.lower_bound, self._upper_bound)
 
     @property
     def codomain(self) -> Constraint:
-        return OpenInterval(self._lower_bound, self._upper_bound)
+        return constraints.OpenInterval(self._lower_bound, self._upper_bound)
 
     def handle_inputs_outside_bounds(
         self, inputs: Tensor, outside_bounds_mask: BoolTensor
@@ -388,14 +374,24 @@ class BoundedRQSplineTransform(_RQSplineTransform):
 
 
 class IntegratedBSplineTransform(Transform):
-
-    def __init__(self, intervals: Tensor, weights: Tensor, *, lower_bound: float, upper_bound: float, min_interval: float = 1e-1, min_weight: float = 1e-3):
+    def __init__(
+        self,
+        intervals: Tensor,
+        weights: Tensor,
+        *,
+        lower_bound: float,
+        upper_bound: float,
+        min_interval: float = 1e-1,
+        min_weight: float = 1e-3,
+    ):
 
         self._lower_bound = lower_bound
         self._upper_bound = upper_bound
 
         intervals = torch.sigmoid(intervals) + min_interval
-        weights = F.softplus(weights) + min_weight  # min weight TODO make configurable
+        weights = (
+            F.softplus(weights) + min_weight
+        )  # min weight TODO make configurable
 
         Δ, ρ = intervals, weights
 
@@ -403,7 +399,7 @@ class IntegratedBSplineTransform(Transform):
         ρ = ρ / (((ρ[..., :-2] + ρ[..., 1:-1] + ρ[..., 2:]) / 3) * Δ).sum(
             dim=-1, keepdim=True
         )
-        
+
         Δpad = F.pad(Δ, (1, 1), "constant", 0)
 
         ω = (ρ[..., 1:] - ρ[..., :-1]) / (Δpad[..., :-1] + Δpad[..., 1:])
@@ -412,7 +408,7 @@ class IntegratedBSplineTransform(Transform):
         zeros = torch.zeros(
             size=(*Δ.shape[:-1], 1),
             device=Δ.device,
-            dtype=Δs.dtype,
+            dtype=Δ.dtype,
         )
         knots_x = torch.cat(
             (
@@ -435,7 +431,6 @@ class IntegratedBSplineTransform(Transform):
         self.knots_x = knots_x
         self.knots_y = knots_y
 
-    
     @property
     def upper_bound(self) -> float:
         return self._upper_bound
@@ -443,26 +438,26 @@ class IntegratedBSplineTransform(Transform):
     @property
     def lower_bound(self) -> float:
         return self._lower_bound
-    
+
     @property
     def domain(self) -> Constraint:
-        return OpenInterval(self.lower_bound, self._upper_bound)
+        return constraints.OpenInterval(self._lower_bound, self._upper_bound)
 
     @property
     def codomain(self) -> Constraint:
-        return OpenInterval(self._lower_bound, self._upper_bound)
-    
+        return constraints.OpenInterval(self._lower_bound, self._upper_bound)
+
     @staticmethod
     def identity_params(x: Tensor) -> dict[str, Tensor]:
-        raise NotImplementedError # TODO
+        raise NotImplementedError  # TODO
 
-    def _forward_and_gradient(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
 
-        x = (x - self.lower_bound) / (
-            self.upper_bound - self.lower_bound
+        x = (x - self.lower_bound) / (self.upper_bound - self.lower_bound)
+
+        i = torch.searchsorted(self.knots_x, x, side="right").clamp(
+            1, self.n_segments
         )
-
-        i = torch.searchsorted(self.knots_x, x, side="right").clamp(1, self.n_segments)
 
         # Get parameters of the segments that x falls in
         Δ = torch.gather(self.intervals, -1, i)
@@ -483,92 +478,70 @@ class IntegratedBSplineTransform(Transform):
 
         dydx = ρ + ωi * Δ * θ**2 - ωim1 * Δ * (1 - θ) ** 2
 
-        ldj = dydx.log().flatten(start_dim=1).sum(dim=1)
+        y = y * (self.upper_bound - self.lower_bound) + self.lower_bound
 
-        y = (
-            y * (self.upper_bound - self.lower_bound)
-            + self.lower_bound
-        )
+        ldj = sum_except_batch(dydx.log())
 
-        return y, dydx
+        return y, ldj
 
-    def forward(self, x: Tensor) -> Tensor:
-        y, _ = self._forward_and_gradient(x)
-        return y
-
-    def inverse(self, y: Tensor) -> Tensor:
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
         raise NotImplementedError
 
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
-        _, dydx = self._forward_and_gradient(x)
-        return sum_except_batch(dydx.log())
-
-    def forward_and_ldj(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        y, dydx = self._forward_and_gradient(x)
-        return y, sum_except_batch(dydx.log())
-
-    def inverse_and_ldj(self, y: Tensor) -> tuple[Tensor, Tensor]:
-        raise NotImplementedError
 
 class MobiusTransform(Transform):
     domain: Constraint = constraints.unit_norm
     codomain: Constraint = constraints.unit_norm
-    arg_constraints: {"omega": None} # TODO
-    
+    arg_constraints: {"omega": None}  # TODO
+
     def __init__(self, omega: Tensor, *, epsilon: float = 1e-3):
         # TODO replace with constraint to disk
         assert LA.vector_norm(omega, dim=-1) < 1
-        
+
         self.omega = omega
 
     @staticmethod
     def identity_params(x: Tensor) -> dict[str, Tensor]:
         return {"omega": torch.zeros_like(x)}
 
-    def forward_and_ldj(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         ω = self.omega
-        x_minus_ω = x - ω
-        
-        dydx = ((1 - dot(ω, ω)) / dot(x_minus_ω, x_minus_ω)).unsqueeze(-1)
-        y = dydx * x_minus_ω - ω
-
+        dydx = ((1 - dot(ω, ω)) / dot(x - ω, x - ω)).unsqueeze(-1)
+        y = dydx * (x - ω) - ω
         ldj = sum_except_batch(dydx.log())
-
         return y, ldj
 
-    def forward(self, x: Tensor) -> Tensor:
-        y, _ = self.forward_and_ldj(x)
-        return y
-
-    def inverse(self, y: Tensor) -> Tensor:
-        raise NotImplementedError
-    
-    def inverse_and_ldj(self, y: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
         ω = self.omega
-        x_minus_ω = x - ω
-        coeff = ((1 - dot(ω, ω)) / dot(x_minus_ω, x_minus_ω))
-        dydx = (ρ * coeff).sum(dim=-2)
-        return sum_except_batch(dydx.log())
+        dxdy = ((1 - dot(ω, ω)) / dot(y + ω, y + ω)).unsqueeze(-1)
+        x = dxdy * (y + ω) + ω
+        ldj = sum_except_batch(dxdy.log())
+        return x, ldj
+
 
 class MobiusMixtureTransform(Transform):
     domain: Constraint = constraints.unit_norm
     codomain: Constraint = constraints.unit_norm
+    arg_constraints: {"omega": None}  # TODO
 
-    def __init__(self, omega: Tensor, weights: Tensor | None = None, *, epsilon: float = 1e-3):
+    def __init__(
+        self,
+        omega: Tensor,
+        weights: Tensor | None = None,
+        *,
+        epsilon: float = 1e-3,
+    ):
+        # TODO replace with constraint to disk
+        assert LA.vector_norm(omega, dim=-1) < 1
+        assert omega.shape[-1] == 2  # only valid for circle
 
         n_mixture = omega.shape[-2]
-        
-        assert LA.vector_norm(omega, dim=-1) < 1
 
         if weights is not None:
             assert weights.shape[-1] == n_mixture
             weights = torch.softmax(weights, dim=-1)
         else:
             weights = 1 / n_mixture
-        
+
         self._n_mixture = n_mixture
         self.omega = omega
         self.weights = weights
@@ -578,101 +551,200 @@ class MobiusMixtureTransform(Transform):
         return self._n_mixture
 
     @staticmethod
-    def identity_params(x: Tensor) -> dict[str, Tensor]:
-        return {"omega": torch.zeros_like(x), "weights": None}
+    def identity_params(
+        x: Tensor, n_mixture: int, weighted: bool
+    ) -> dict[str, Tensor]:
+        # NOTE: torchlft.utils.tensor.dot expects the vector dim to be -1,
+        # which forces us to use dim -2 for the mixture components.
+        omega = torch.zeros(
+            *x.shape[:-1], n_mixture, 2, device=x.device, dtype=x.dtype
+        )
+        weights = (
+            torch.full(
+                (*x.shape[:-1], n_mixture),
+                (1 / n_mixture),
+                device=x.device,
+                dtype=x.dtype,
+            )
+            if weighted
+            else None
+        )
+        return {"omega": omega, "weights": weights}
 
-    def forward_and_ldj(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         ω, ρ = self.omega, self.weights
-        
-        x_10 = torch.tensor([1, 0]).type_as(x).expand_as(x)
 
-        x = torch.stack(
-                [x, x_10],
-                dim=0
-        ).unsqueeze(-2)
+        x0 = torch.tensor([1, 0]).type_as(x).expand_as(x)
+        x_x0 = torch.stack([x, x0], dim=0).unsqueeze(-2)
 
-        x_minus_ω = x - ω
-        
-        coeff = ((1 - dot(ω, ω)) / dot(x_minus_ω, x_minus_ω)).unsqueeze(-1)
-        fx = coeff * x_minus_ω - ω
+        dydx = ((1 - dot(ω, ω)) / dot(x_x0 - ω, x_x0 - ω)).unsqueeze(-1)
+        y_y0 = dydx * (x_x0 - ω) - ω
 
-        θ, θ_10 = torch.atan2(*reversed(fx.split(1, dim=-1)))
-        θ = (ρ * mod_2pi(θ - θ_10)).sum(dim=-2)
-        
-        y = torch.cat([θ.cos(), θ.sin()], dim=-1)
+        # Now rotate s.t (1, 0) -> (1, 0)
+        ϕ, ϕ0 = torch.atan2(*reversed(y_y0.split(1, dim=-1)))
+        ϕ = mod_2pi(ϕ - ϕ0)
 
-        ldj = sum_except_batch((ρ * coeff[0]).sum(dim=-2).log())
+        Σρϕ = (ρ * ϕ).sum(dim=-2)
+        y = torch.cat([torch.cos(Σρϕ), torch.sin(Σρϕ)], dim=-1)
+
+        dydx, _ = dydx
+        dydx = (ρ * dydx).sum(dim=-2)
+        ldj = sum_except_batch(dydx.log())
 
         return y, ldj
 
-    def forward(self, x: Tensor) -> Tensor:
-        y, _ = self.forward_and_ldj(x)
-        return y
-
-    def inverse(self, y: Tensor) -> Tensor:
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
         raise NotImplementedError
-    
-    def inverse_and_ldj(self, y: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def log_det_jacobian(self, x: Tensor, y: Tensor) -> Tensor:
-        ω, ρ = self.omega, self.weights
-        x_minus_ω = x - ω
-        coeff = ((1 - dot(ω, ω)) / dot(x_minus_ω, x_minus_ω))
-        dydx = (ρ * coeff).sum(dim=-2)
-        return sum_except_batch(dydx.log())
 
 
 class ProjectedAffineTransform(Transform):
-    domain: periodic
-    codomain: periodic
+    domain: constraints.periodic
+    codomain: constraints.periodic
+    arg_constraints: {"log_scale": constraints.real, "shift": constraints.real}
 
-    def __init__(self, log_scale: Tensor, shift: Tensor | None, weights: Tensor | None, linear_thresh: float | None = None):
-        n_mixture = log_scale.shape[-1] # TODO: this is very bad
-        
-        
+    def __init__(
+        self,
+        log_scale: Tensor,
+        shift: Tensor | None,
+        *,
+        linear_thresh: float | None = None,
+    ):
+        self.log_scale = log_scale
+        self.shift = shift if shift is not None else 0
+        self._linear_thresh = linear_thresh
+
+    @staticmethod
+    def identity_params(x: Tensor, shift: bool) -> dict[str, Tensor]:
+        return {
+            "log_scale": torch.zeros_like(x),
+            "shift": torch.zeros_like(x) if shift else None,
+        }
+
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        log_α, β = self.log_scale, self.shift
+        α = torch.exp(log_α)
+
+        y = mod_2pi(2 * torch.atan(α * torch.tan((x - π) / 2) + β) + π)
+
+        dxdy = (
+            (1 + β**2) / α * torch.sin(x / 2) ** 2
+            + α * torch.cos(x / 2) ** 2
+            - β * torch.sin(x)
+        )
+
+        if self._linear_thresh is None:
+            ldj = sum_except_batch(dxdy.log().negative())
+            return y, ldj
+
+        m1 = x < self._linear_thresh
+        m2 = (2 * π - x) < self._linear_thresh
+
+        y[m1] = (x / α)[m1]
+        y[m2] = (2 * π - (2 * π - x) / α)[m2]
+        dxdy[m1 | m2] = α[m1 | m2]
+
+        ldj = sum_except_batch(dxdy.log().negative())
+
+        return y, ldj
+
+    def inverse(self, y: Tensor) -> Tensor:
+        log_α, β = self.log_scale, self.shift
+        α = torch.exp(log_α)
+
+        x = mod_2pi(2 * torch.atan((1 / α) * torch.tan((y - π) / 2) - β)) + π
+
+        dxdy = (
+            (1 + β**2) / α * torch.sin(x / 2) ** 2
+            + α * torch.cos(x / 2) ** 2
+            - β * torch.sin(x)
+        )
+
+        if self._linear_thresh is None:
+            ldj = sum_except_batch(dxdy.log())
+            return x, ldj
+
+        m1 = y < self._linear_thresh
+        m2 = (2 * π - y) < self._linear_thresh
+
+        y[m1] = (y * α)[m1]
+        y[m2] = (2 * π - (2 * π - y) * α)[m2]
+        dxdy[m1 | m2] = α[m1 | m2]
+
+        ldj = sum_except_batch(dxdy.log())
+
+        return x, ldj
+
+
+class ProjectedAffineMixtureTransform(Transform):
+    domain: constraints.periodic
+    codomain: constraints.periodic
+    arg_constraints: {
+        "log_scale": constraints.real,
+        "shift": constraints.real,
+        "weights": constraints.real,
+    }
+
+    def __init__(
+        self,
+        log_scale: Tensor,
+        shift: Tensor | None,
+        weights: Tensor | None,
+        *,
+        linear_thresh: float | None = None,
+    ):
+        n_mixture = log_scale.shape[-1]
+
         if weights is not None:
             assert weights.shape[-1] == n_mixture
             weights = torch.softmax(weights, dim=-1)
         else:
             weights = 1 / n_mixture
-        
+
         self._n_mixture = n_mixture
         self.log_scale = log_scale
         self.shift = shift if shift is not None else 0
         self.weights = weights
 
         self._linear_thresh = linear_thresh
-    
+
     @staticmethod
-    def identity_params(x: Tensor) -> dict[str, Tensor]:
-        return {"log_scale": torch.zeros_like(x), "shift": None, "weights": None}
-
-    def forward(self, x: Tensor) -> Tensor:
-        s, t = self.log_scale, self.shift
-        y = mod_2pi(2 * torch.atan(torch.exp(-s) * torch.tan((x - π) / 2) + t) + π)
-
-        if self._linear_thresh is None:
-            return y
-
-        m1 = x < self._linear_thresh
-        m2 = (2 * π - x) < self._linear_thresh
-
-        y[m1] = (x * torch.exp(s))[m1]
-        y[m2] = 2 * π - ((2 * π - x) * torch.exp(s))[m2]
-
-
-    def inverse(self, y: Tensor) -> Tensor:
-        s, t = self.log_scale, self.shift
-        return mod_2pi(2 * torch.atan(torch.exp(s) * torch.tan(y / 2) - t))
-
-
-    def _log_det_jacobian_single(self, x: Tensor, y: Tensor) -> Tensor:
-        s, t = self.log_scale, self.shift
-        dydx_recip = (
-                (1 + t ** 2) * torch.exp(s) * torch.sin(x / 2) ** 2
-                + torch.exp(-s) * torch.cos(x / 2) ** 2
-                - t * torch.sin(x)
+    def identity_params(
+        x: Tensor, n_mixture: int, use_shift: bool, weighted: bool
+    ) -> dict[str, Tensor]:
+        shape = (*x.shape, n_mixture)
+        log_scale = torch.zeros(shape).type_as(x)
+        shift = torch.zeros(shape).type_as(x) if use_shift else None
+        weights = (
+            torch.full(shape, (1 / n_mixture)).type_as(x) if weighted else None
         )
-        return dydx_recip.log().negative()
+        return {"log_scale": log_scale, "shift": shift, "weights": weights}
 
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        log_α, β, ρ = self.log_scale, self.shift, self.weights
+        α = torch.exp(log_α)
+        x = x.unsqueeze(-1)  # mixture dimension
+
+        y = mod_2pi(2 * torch.atan(α * torch.tan((x - π) / 2) + β) + π)
+
+        dxdy = (
+            (1 + β**2) / α * torch.sin(x / 2) ** 2
+            + α * torch.cos(x / 2) ** 2
+            - β * torch.sin(x)
+        )
+
+        if self._linear_thresh is not None:
+            m1 = x < self._linear_thresh
+            m2 = (2 * π - x) < self._linear_thresh
+
+            y[m1] = (x / α)[m1]
+            y[m2] = (2 * π - (2 * π - x) / α)[m2]
+            dxdy[m1 | m2] = α[m1 | m2]
+
+        y = (ρ * y).sum(dim=-1)
+        dydx = (ρ * (1 / dxdy)).sum(dim=-1)
+
+        ldj = sum_except_batch(dydx.log())
+        return y, ldj
+
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
+        raise NotImplementedError

@@ -18,5 +18,10 @@ def outer(x: Tensor, y: Tensor) -> Tensor:
 def cross(x: Tensor, y: Tensor) -> Tensor:
     return LA.cross(x, y, dim=-1)
 
+
 def mod_2pi(x: Tensor) -> Tensor:
     return torch.remainder(x, 2 * π)
+
+
+def sum_except_batch(x: Tensor) -> Tensor:
+    return x.flatten(start_dim=1).sum(dim=1)
