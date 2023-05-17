@@ -1,0 +1,6 @@
+class GaussianMomentaMixin:
+    ...
+
+
+class CauchyMomentaMixin:
+    ...

@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 from math import exp
 from random import random
+from typing import TYPE_CHECKING
 
 import torch
 
-from torchlft.typing import *
+if TYPE_CHECKING:
+    from torchlft.typing import *
 
 __all__ = [
     "metropolis_test",
@@ -68,35 +72,10 @@ def metropolis_test(log_weights: Tensor) -> tuple[LongTensor, BoolTensor]:
 
 
 def shifted_kl_divergence(log_weights: Tensor) -> Tensor:
-    r"""
-    Shifted Kullbach-Leibler divergence of the sample.
-
-    .. math::
-
-        \tilde{D}_{KL} = \frac{1}{N} \sum_{i=1}^N - \log w(\phi_i)
-    """
     return log_weights.mean(dim=-1).negative()
 
 
 def effective_sample_size(log_weights: Tensor) -> Tensor:
-    r"""
-    Effective sample size normalised by the size of the sample.
-
-    The effective sample size is defined by
-
-    .. math::
-
-        N_{eff} = \frac{
-            \left[ \frac{1}{N} \sum_{i=1}^N w(\phi_i) \right]^2
-            }{
-            \frac{1}{N} \sum_{i=1}^N w(\phi_i)^2
-        }
-
-    The quantity returned is actually :math:`N_{eff} / N`.
-
-    References:
-        :arxiv:`2101.08176`
-    """
     *_, N = log_weights.shape
     Neff = torch.exp(
         2 * torch.logsumexp(log_weights, dim=-1)
@@ -106,9 +85,6 @@ def effective_sample_size(log_weights: Tensor) -> Tensor:
 
 
 def acceptance_rate(history: Tensor) -> Tensor:
-    r"""
-    Fraction of proposals accepted during Metropolis-Hastings.
-    """
     return history.float().mean(dim=-1)
 
 
@@ -137,12 +113,6 @@ def rejection_histogram(history: BoolTensor) -> LongTensor:
 
 
 def integrated_autocorrelation(history: BoolTensor) -> Tensor:
-    r"""
-    Integrated autocorrelation derived from the accept/reject history.
-
-    References:
-        :arxiv:`1904.12072`
-    """
     # constraints.bool.check(history)  # meh
 
     histogram = rejection_histogram(history)

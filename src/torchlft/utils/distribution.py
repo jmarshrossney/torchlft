@@ -1,8 +1,7 @@
 """
 A collection of utils for constructing objects based on distributions.
 """
-from collections.abc import Iterable
-from typing import Optional, Union
+from __future__ import annotations
 
 import torch
 import torch.distributions

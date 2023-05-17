@@ -1,15 +1,19 @@
 """
 Constraints
 """
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections import UserList
 from collections.abc import Iterable
 from math import pi as π
+from typing import TYPE_CHECKING
 
 import torch
 import torch.linalg as LA
 
-from torchlft.typing import *
+if TYPE_CHECKING:
+    from torchlft.typing import *
 
 __all__ = [
     "boolean",
@@ -17,7 +21,8 @@ __all__ = [
     "positive",
     "nonnegative",
     "periodic",
-    "unit_vector",
+    "UnitNorm",
+    "SumToValue",
 ]
 
 
@@ -141,6 +146,11 @@ class UnitNorm(_Constraint):
         self.dim = dim
         self.atol = atol
 
+    def __eq__(self, other):
+        if isinstance(other, UnitNorm):
+            return (other.dim == self.dim) and (other.atol == self.atol)
+        return False
+
     def check(self, t):
         return torch.allclose(
             LA.vector_norm(t, dim=self.dim) - 1,
@@ -150,17 +160,41 @@ class UnitNorm(_Constraint):
         )
 
 
-class SumToOne(_Constraint):
+class UnitBall(_Constraint):
     def __init__(self, dim: int, atol: float = 1e-5):
         self.dim = dim
-        self.atol = atol
+
+    def __eq__(self, other):
+        if isinstance(other, UnitNorm):
+            return other.dim == self.dim
+        return False
+
+    def check(self, t):
+        return torch.all(
+            LA.vector_norm(t, dim=self.dim) <= 1,
+        )
+
+
+class SumToValue(_Constraint):
+    def __init__(self, value: float, dim: int, rtol: float = 1e-5):
+        self.value = value
+        self.dim = dim
+        self.rtol = rtol
+
+    def __eq__(self, other):
+        if isinstance(other, SumToOne):
+            return (
+                (other.value == self.value)
+                and (other.dim == self.dim)
+                and (other.rtol == self.rtol)
+            )
+        return False
 
     def check(self, t):
         return torch.allclose(
-            t.sum(dim=self.dim) - 1,
+            t.sum(dim=self.dim) - self.value,
             torch.zeros(1, dtype=t.dtype, device=t.device),
-            atol=self.atol,
-            rtol=0,
+            rtol=self.rtol,
         )
 
 
@@ -172,4 +206,3 @@ real = _Real()
 positive = GreaterThan(0)
 nonnegative = GreaterThanEqualTo(0)
 periodic = HalfOpenInterval(0, 2 * π)
-unit_vector = UnitNorm(dim=-1)

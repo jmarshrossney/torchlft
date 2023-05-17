@@ -1,18 +1,38 @@
+from __future__ import annotations
+
 import itertools
+import math
+from typing import TYPE_CHECKING
 
 import torch
 
-from torchlft.typing import *
+if TYPE_CHECKING:
+    from torchlft.typing import *
 
 
-def make_checkerboard(lattice_shape: list[int]) -> BoolTensor:
+def assert_valid_partitioning(*masks: BoolTensor) -> None:
+    union = torch.stack(masks).sum(dim=0)
+    if (union == 1).all():
+        return
+
+    msg = ""
+    if (union > 1).any():
+        msg += "Some elements appear more than once\n"
+    if (union == 0).any():
+        msg += "Some elements do not appear\n"
+    raise Exception(msg)  # TODO custom exc
+
+
+def make_checkerboard(
+    lattice_shape: torch.Size, device: torch.device
+) -> BoolTensor:
     """
     Returns a boolean mask that selects 'even' lattice sites.
     """
     assert all(
         [n % 2 == 0 for n in lattice_shape]
     ), "each lattice dimension should be even"
-    checkerboard = torch.full(lattice_shape, False)
+    checkerboard = torch.full(lattice_shape, fill_value=False, device=device)
     if len(lattice_shape) == 1:
         checkerboard[::2] = True
     elif len(lattice_shape) == 2:
@@ -21,6 +41,13 @@ def make_checkerboard(lattice_shape: list[int]) -> BoolTensor:
     else:
         raise NotImplementedError("d > 2 currently not supported")
     return checkerboard
+
+
+def make_checkerboard_partitions(
+    lattice_shape: torch.Size, device=torch.device
+) -> list[BoolTensor, BoolTensor]:
+    checker = make_checkerboard(lattice_shape, device)
+    return [checker, ~checker]
 
 
 def alternating_checkerboard_mask(lattice_shape: list[int]) -> itertools.cycle:
@@ -60,3 +87,18 @@ def nearest_neighbour_kernel(lattice_dim) -> Tensor:
         nn_kernel.add_(identity_kernel.roll(shift, dim))
 
     return nn_kernel
+
+
+def build_neighbour_list(
+    lattice_shape: torch.Size,
+) -> list[list[int, ...], ...]:
+    indices = torch.arange(math.prod(lattice_shape)).view(lattice_shape)
+    lattice_dims = range(len(lattice_shape))
+    neighbour_indices = torch.stack(
+        [
+            indices.roll(shift, dim).flatten()
+            for shift, dim in itertools.product([1, -1], lattice_dims)
+        ],
+        dim=1,
+    )
+    return neighbour_indices.tolist()

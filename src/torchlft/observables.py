@@ -1,11 +1,31 @@
-from typing import Optional
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from math import pi as π, prod, sin
 
 import torch
+import torch.nn.functional as F
 
 from torchlft.abc import Field
 from torchlft.geometry import spherical_triangle_area
-from torchlft.typing import *
+
+if TYPE_CHECKING:
+    from torchlft.typing import *
+
+
+def autocorrelation(observable: Iterable) -> Tensor:
+    # TODO: vectorise
+    observable = torch.as_tensor(observable)
+    assert observable.dim() == 1
+    n = observable.shape[0]
+
+    observable = observable.view(1, 1, -1)
+    autocovariance = torch.nn.functional.conv1d(
+        F.pad(observable, (0, n - 1)),
+        observable,
+    ).squeeze()
+
+    return autocovariance.div(autocovariance[0])
 
 
 def magnetisation_sq(sample: CanonicalClassicalSpinField) -> Tensor:
@@ -16,10 +36,10 @@ def topological_charge(sample: CanonicalClassicalSpinField) -> Tensor:
     assert len(sample.lattice_shape) == 2
     assert sample.element_shape == (3,)
 
-    s1 = sample.tensor
-    s2 = s1.roll(-1, 0)
-    s3 = s2.roll(-1, 1)
-    s4 = s3.roll(+1, 0)
+    s1 = sample.data
+    s2 = s1.roll(-1, 1)
+    s3 = s2.roll(-1, 2)
+    s4 = s3.roll(+1, 1)
 
     area_enclosed = (
         spherical_triangle_area(s1, s2, s3)

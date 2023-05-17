@@ -1,66 +1,80 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from math import pi as π
 import math
+from typing import TYPE_CHECKING
 
 import torch
 import torch.linalg as LA
 import torch.nn.functional as F
 
-from torchlft.abc import Constraint, Transform
 import torchlft.constraints as constraints
-from torchlft.typing import *
 from torchlft.utils.tensor import sum_except_batch, mod_2pi, dot
 
+if TYPE_CHECKING:
+    from torchlft.typing import *
 
-class Translation(Transform):
+DEBUG = False
+
+# NOTE: unsure whether to support giving a single parameter, or one per batch,
+# rather than for each lattice site.
+# May lead to hard to catch bugs
+
+
+class Translation:
     domain: Constraint = constraints.real
-    codomain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"shift": constraints.real}
 
     def __init__(self, shift: Tensor) -> None:
+        if DEBUG:
+            constraints.real.check(shift)
+
         self.shift = shift
 
-    @staticmethod
-    def identity_params(x: Tensor) -> dict[str, Tensor]:
-        return {"shift": torch.zeros_like(x)}
+    @classmethod
+    def as_identity(cls, x: Tensor) -> Translation:
+        return cls(shift=torch.zeros_like(x))
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        y = x + self.shift
+        t = self.shift.expand_as(x)
+        y = x + t
         ldj = torch.zeros(x.shape[0], device=x.device)
         return y, ldj
 
     def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
-        x = y - self.shift
+        t = self.shift.expand_as(y)
+        x = y - t
         ldj = torch.zeros(y.shape[0], device=y.device)
         return x, ldj
 
 
-class Rescaling(Transform):
+class Rescaling:
     domain: Constraint = constraints.real
-    codomain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"log_scale": constraints.real}
 
     def __init__(self, log_scale: Tensor) -> None:
         self.log_scale = log_scale
 
-    @staticmethod
-    def identity_params(x: Tensor) -> dict[str, Tensor]:
-        return {"log_scale": torch.zeros_like(x)}
+    @classmethod
+    def as_identity(cls, x: Tensor) -> Rescaling:
+        return cls(log_scale=torch.zeros_like(x))
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        y = x * self.log_scale.exp()
-        ldj = sum_except_batch(self.log_scale)
+        s = self.log_scale.expand_as(x)
+        y = x * torch.exp(s)
+        ldj = sum_except_batch(s)
         return y, ldj
 
     def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
-        x = y * self.log_scale.negative().exp()
-        ldj = sum_except_batch(self.log_scale).negative()
+        s = self.log_scale.expand_as(y)
+        x = y * torch.exp(-s)
+        ldj = sum_except_batch(-s)
         return x, ldj
 
 
-class AffineTransform(Transform):
+class AffineTransform:
     domain: Constraint = constraints.real
-    codomain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {
         "log_scale": constraints.real,
         "shift": constraints.real,
@@ -70,24 +84,24 @@ class AffineTransform(Transform):
         self.log_scale = log_scale
         self.shift = shift
 
-    @staticmethod
-    def identity_params(x: Tensor) -> Tensor:
-        return {"log_scale": torch.zeros_like(x), "shift": torch.zeros_like(x)}
+    @classmethod
+    def as_identity(cls, x: Tensor) -> Tensor:
+        return cls(log_scale=torch.zeros_like(x), shift=torch.zeros_like(x))
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        s, t = self.log_scale, self.shift
+        s, t = self.log_scale.expand_as(x), self.shift.expand_as(x)
         y = x * torch.exp(s) + t
         ldj = sum_except_batch(s)
         return y, ldj
 
     def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
-        s, t = self.log_scale, self.shift
+        s, t = self.log_scale.expand_as(x), self.shift.expand_as(x)
         x = (y - t) * torch.exp(-s)
         ldj = sum_except_batch(self.log_scale).negative()
         return x, ldj
 
 
-class _RQSplineTransform(Transform):
+class RQSplineTransform:
     """
     This uses the parametrisation introduced by Gregory and Delbourgo
     (1983)
@@ -117,12 +131,6 @@ class _RQSplineTransform(Transform):
         Numerical Analysis, 1983, 3, 141-152
         """
 
-    arg_constraints: dict[str, Constraint] = {
-        "widths": constraints.real,
-        "heights": constraints.real,
-        "derivs": constraints.real,
-    }
-
     def __init__(
         self,
         widths: Tensor,
@@ -131,32 +139,44 @@ class _RQSplineTransform(Transform):
         *,
         lower_bound: float,
         upper_bound: float,
+        bounded: bool,
+        periodic: bool,
         min_slope: float = 1e-3,
     ) -> None:
+        if periodic and not bounded:
+            raise ValueError
 
-        self._lower_bound = lower_bound
-        self._upper_bound = upper_bound
-
-        self._n_segments = widths.shape[-1]
-        assert heights.shape[-1] == self._n_segments
+        assert widths.shape == heights.shape
 
         # Normalise the widths and heights to the interval
-        interval_size = upper_bound - lower_bound
-        widths = interval_size * F.softmax(widths, dim=-1)
-        heights = interval_size * F.softmax(heights, dim=-1)
+        widths = F.softmax(widths, dim=-1) * (upper_bound - lower_bound)
+        heights = F.softmax(heights, dim=-1) * (upper_bound - lower_bound)
 
         # Ensure the derivatives are positive and > min_slope
         derivs = F.softplus(derivs) + min_slope
 
+        if DEBUG:
+            constraint = constraints.positive + constraints.SumToValue(
+                upper_bound - lower_bound, dim=-1
+            )
+            constraint.check(widths)
+            constraint.check(heights)
+            constraints.positive.check(derivs)
+
+        self._n_segments = widths.shape[-1]
+
         # Apply boundary conditions to the derivatives
-        if self.domain is constraints.real:
-            derivs = F.pad(derivs, (1, 1), "constant", 1)  # linear tails
-        elif self.domain is constraints.periodic:
+        if not bounded:
+            # match derivs with identity transform outside bounds
+            derivs = F.pad(derivs, (1, 1), "constant", 1)
+        elif periodic:
+            # match derivs at 0 and 2pi
             derivs = F.pad(derivs.flatten(1, -2), (0, 1), "circular").view(
                 *derivs.shape[:-1], -1
-            )  # match derivs at 0 and 2pi
+            )
         else:
-            derivs = derivs  # no additional constraints
+            # bounded and not periodic: no additional constraints
+            derivs = derivs
 
         assert derivs.shape[-1] == self._n_segments + 1
 
@@ -187,6 +207,11 @@ class _RQSplineTransform(Transform):
         self.knots_y = knots_y
         self.knots_dydx = derivs
 
+        self._lower_bound = lower_bound
+        self._upper_bound = upper_bound
+        self._bounded = bounded
+        self._periodic = periodic
+
     @property
     def n_segments(self) -> int:
         return self._n_segments
@@ -198,6 +223,22 @@ class _RQSplineTransform(Transform):
     @property
     def lower_bound(self) -> float:
         return self._lower_bound
+
+    @property
+    def bounded(self) -> bool:
+        return self._bounded
+
+    @property
+    def periodic(self) -> bool:
+        return self._periodic
+
+    @property
+    def domain(self) -> Constraint:
+        return (
+            constraints.OpenInterval(self.lower_bound, self.upper_bound)
+            if self.bounded
+            else constraints.real
+        )
 
     @staticmethod
     def identity_params(x: Tensor, n_segments: int) -> dict[str, Any]:
@@ -218,14 +259,36 @@ class _RQSplineTransform(Transform):
             "min_slope": 0,
         }
 
+    @classmethod
+    def as_identity(
+        cls,
+        x: Tensor,
+        n_segments: int,
+    ) -> RQSplineTransform:
+        widths = (
+            torch.full_like(x, fill_value=(1 / n_segments))
+            .unsqueeze(-1)
+            .repeat([1 for _ in x.shape] + [n_segments])
+        )
+        heights = widths
+        derivs = (
+            torch.full_like(x, fill_value=math.log(math.e - 1))
+            .unsqueeze(-1)
+            .repeat([1 for _ in x.shape] + [n_segments - 1])
+        )
+        return cls(widths, heights, derivs)  # .........
+
     def handle_inputs_outside_bounds(
         self, inputs: Tensor, outside_bounds_mask: BoolTensor
     ) -> None:
         """
-        Handle inputs falling outside the spline interval.
+        Handle inputs falling outside the spline bounds.
 
-        Unless overridden, this method submits a :code:`log.debug` logging
-        event if more than 1/1000 inputs fall outside the spline interval.
+        By default, this method has two distinct behaviour depending on
+        whether the ``bounded`` attribute is true or false. If it is true,
+        any inputs falling outside the bounds causes an exception to be
+        raised. If it is false, this method submits a :code:`log.info` logging
+        event which details the fraction of inputs falling outside the bounds.
 
         Args:
             inputs
@@ -236,7 +299,11 @@ class _RQSplineTransform(Transform):
                 the spline bounds.
 
         """
-        pass
+        if self._bounded:
+            if outside_bounds_mask.any():
+                raise Exception  # custom exception needed
+        else:
+            pass  # TODO: log.info
 
     def _get_segment(
         self, inputs: Tensor, inverse: bool = False
@@ -324,15 +391,7 @@ class _RQSplineTransform(Transform):
         return x, ldj
 
 
-class RQSplineTransform(_RQSplineTransform):
-    domain: Constraint = constraints.real
-    codomain: Constraint = constraints.real
-
-
-class CircularRQSplineTransform(_RQSplineTransform):
-    domain: Constraint = constraints.periodic
-    codomain: Constraint = constraints.periodic
-
+class CircularSplineTransform(RQSplineTransform):
     def __init__(
         self,
         widths: Tensor,
@@ -347,33 +406,13 @@ class CircularRQSplineTransform(_RQSplineTransform):
             derivs,
             lower_bound=0,
             upper_bound=2 * π,
+            bounded=True,
+            periodic=True,
             min_slope=min_slope,
         )
 
-    def handle_inputs_outside_bounds(
-        self, inputs: Tensor, outside_bounds_mask: BoolTensor
-    ) -> None:
-        if outside_bounds_mask.any():
-            raise Exception  # custom exception needed
 
-
-class BoundedRQSplineTransform(_RQSplineTransform):
-    @property
-    def domain(self) -> Constraint:
-        return constraints.OpenInterval(self.lower_bound, self._upper_bound)
-
-    @property
-    def codomain(self) -> Constraint:
-        return constraints.OpenInterval(self._lower_bound, self._upper_bound)
-
-    def handle_inputs_outside_bounds(
-        self, inputs: Tensor, outside_bounds_mask: BoolTensor
-    ) -> None:
-        if outside_bounds_mask.any():
-            raise Exception
-
-
-class IntegratedBSplineTransform(Transform):
+class IntegratedBSplineTransform:
     def __init__(
         self,
         intervals: Tensor,
@@ -443,14 +482,6 @@ class IntegratedBSplineTransform(Transform):
     def domain(self) -> Constraint:
         return constraints.OpenInterval(self._lower_bound, self._upper_bound)
 
-    @property
-    def codomain(self) -> Constraint:
-        return constraints.OpenInterval(self._lower_bound, self._upper_bound)
-
-    @staticmethod
-    def identity_params(x: Tensor) -> dict[str, Tensor]:
-        raise NotImplementedError  # TODO
-
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
 
         x = (x - self.lower_bound) / (self.upper_bound - self.lower_bound)
@@ -488,15 +519,14 @@ class IntegratedBSplineTransform(Transform):
         raise NotImplementedError
 
 
-class MobiusTransform(Transform):
-    domain: Constraint = constraints.unit_norm
-    codomain: Constraint = constraints.unit_norm
-    arg_constraints: {"omega": None}  # TODO
+class MobiusTransform:
+    domain: Constraint = constraints.UnitNorm(dim=-1)
+    codomain: Constraint = constraints.UnitNorm(dim=-1)
+    arg_constraints: {"omega": constraints.UnitBall(dim=-1)}
 
     def __init__(self, omega: Tensor, *, epsilon: float = 1e-3):
-        # TODO replace with constraint to disk
-        assert LA.vector_norm(omega, dim=-1) < 1
-
+        # NOTE: perhaps constraining omega should occur within this
+        # constructor, so unconstrained inputs can be passed in
         self.omega = omega
 
     @staticmethod
@@ -518,10 +548,13 @@ class MobiusTransform(Transform):
         return x, ldj
 
 
-class MobiusMixtureTransform(Transform):
-    domain: Constraint = constraints.unit_norm
-    codomain: Constraint = constraints.unit_norm
-    arg_constraints: {"omega": None}  # TODO
+class MobiusMixtureTransform:
+    domain: Constraint = constraints.UnitNorm(dim=-1)
+    codomain: Constraint = constraints.UnitNorm(dim=-1)
+    arg_constraints: {
+        "omega": constraints.UnitBall(dim=-1),
+        "weights": constraints.real,
+    }
 
     def __init__(
         self,
@@ -597,7 +630,7 @@ class MobiusMixtureTransform(Transform):
         raise NotImplementedError
 
 
-class ProjectedAffineTransform(Transform):
+class ProjectedAffineTransform:
     domain: constraints.periodic
     codomain: constraints.periodic
     arg_constraints: {"log_scale": constraints.real, "shift": constraints.real}
@@ -675,7 +708,7 @@ class ProjectedAffineTransform(Transform):
         return x, ldj
 
 
-class ProjectedAffineMixtureTransform(Transform):
+class ProjectedAffineMixtureTransform:
     domain: constraints.periodic
     codomain: constraints.periodic
     arg_constraints: {
