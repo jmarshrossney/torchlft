@@ -13,14 +13,6 @@ from typing import (
 from torch import Tensor, BoolTensor, LongTensor, Size
 from torch.nn import Module
 
-from torchlft.fields import (
-    Field,
-    CanonicalField,
-    PartitionedField,
-    MaskedField,
-    CompositeField,
-)
-
 __all__ = [
     "Any",
     "Callable",
@@ -38,7 +30,6 @@ __all__ += [
 ]
 
 # Custom types
-__all__ += torchlft.fields.__all__
 
 __all__ += [
     "Activation",

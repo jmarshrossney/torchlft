@@ -29,3 +29,8 @@ def mod_2pi(x: Tensor) -> Tensor:
 
 def sum_except_batch(x: Tensor) -> Tensor:
     return x.flatten(start_dim=1).sum(dim=1)
+
+
+def expand_like_stack(x: Tensor, n: int) -> Tensor:
+    expanded_shape = [n] + list(x.shape)
+    return x.expand(expanded_shape)

@@ -30,15 +30,10 @@ DEBUG: bool = True
 
 
 class Field(ABC):
-    def __init__(self, data: Tensor, *args, **metadata) -> None:
+    def __init__(self, data: Tensor, **metadata) -> None:
 
         if DEBUG:
             self.domain.check(data)
-
-        args = [
-            v.to(data.device) if isinstance(v, torch.Tensor) else v
-            for v in args
-        ]
 
         metadata |= {
             k: v.to(data.device)
@@ -47,7 +42,6 @@ class Field(ABC):
         }
 
         self._data = data
-        self._args = args
         self._metadata = metadata
 
     @property
@@ -83,7 +77,7 @@ class Field(ABC):
         # Probably just shallow copy, but need to be very clear that
         # init kwargs should never be modified after instantiation
         # (which is the same as data anyway)
-        return type(self)(new_data, *self._args, **self._metadata)
+        return type(self)(new_data, **self._metadata)
 
     def clone(self) -> Field:
         return self._new_like(self.data.clone())
@@ -129,39 +123,53 @@ class CanonicalField(Field):
                 for key in ("batch_size", "lattice_shape", "element_shape")
             ]
         ):
-            raise ValueError
+            raise Exception
 
         metadata |= shape_metadata
 
         super().__init__(data, **metadata)
 
     @property
-    def canonical_class(self):
-        return type(self)
-
-    def to_canonical(self):
-        return self
-
-    @classmethod
-    def from_canonical(cls, other: CanonicalField) -> CanonicalField:
-        assert (
-            type(other) is cls
-        ), f"Type mismatch: expected {cls} but got {type(other)}"
-        return other
-
-    @property
     def batch_size(self) -> int:
         return self.metadata["batch_size"]
 
     @property
-    @abstractmethod
     def lattice_shape(self) -> torch.Size:
         self.metadata["lattice_shape"]
 
     @property
-    @abstractmethod
     def element_shape(self) -> torch.Size:
         self.metadata["element_shape"]
+
+    def to_canonical(self) -> CanonicalField:
+        return self
+
+    @classmethod
+    def from_canonical(cls, other: CanonicalField) -> Field:
+        return other
+
+
+class FieldPartitioning:
+    @staticmethod
+    def valid_partitioning(masks: tuple[BoolTensor]):
+        ...
+
+    def split(self, field: Field) -> tuple[Tensor, ...]:
+        ...
+
+    def join(self, *partitions: Tensor) -> Field:
+        ...
+
+
+class FieldPartitioning:
+    def split(self, field: Field) -> tuple[Tensor, ...]:
+        masks = self.get_masks(field)
+
+        assert_valid_partitioning(masks)
+
+        partitions = (field.data[:, mask] for mask in masks)
+
+        return
 
 
 class PartitionedField(Field):

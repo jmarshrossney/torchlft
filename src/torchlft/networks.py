@@ -43,8 +43,8 @@ Activation = Union[_ACTIVATIONS]
 
 
 def make_fnn(
-    in_features: PositiveInt,
-    out_features: PositiveInt,
+    size_in: PositiveInt,
+    size_out: PositiveInt,
     hidden_shape: list[PositiveInt],
     activation: Activation,
     final_activation: Activation = torch.nn.Identity(),
@@ -53,7 +53,7 @@ def make_fnn(
     layers = [
         torch.nn.Linear(f_in, f_out, bias=bias)
         for f_in, f_out in zip(
-            [in_features, *hidden_shape], [*hidden_shape, out_features]
+            [size_in, *hidden_shape], [*hidden_shape, size_out]
         )
     ]
     activations = [activation for _ in hidden_shape] + [final_activation]

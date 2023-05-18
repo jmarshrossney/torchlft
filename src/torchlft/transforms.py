@@ -10,7 +10,12 @@ import torch.linalg as LA
 import torch.nn.functional as F
 
 import torchlft.constraints as constraints
-from torchlft.utils.tensor import sum_except_batch, mod_2pi, dot
+from torchlft.utils.tensor import (
+    sum_except_batch,
+    mod_2pi,
+    dot,
+    expand_like_stack,
+)
 
 if TYPE_CHECKING:
     from torchlft.typing import *
@@ -22,21 +27,15 @@ DEBUG = False
 # May lead to hard to catch bugs
 
 
+@torch.jit.script
 class Translation:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"shift": constraints.real}
 
     def __init__(self, shift: Tensor) -> None:
-        if DEBUG:
-            constraints.real.check(shift)
-
         self.shift = shift
 
-    @classmethod
-    def as_identity(cls, x: Tensor) -> Translation:
-        return cls(shift=torch.zeros_like(x))
-
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         t = self.shift.expand_as(x)
         y = x + t
         ldj = torch.zeros(x.shape[0], device=x.device)
@@ -49,6 +48,7 @@ class Translation:
         return x, ldj
 
 
+@torch.jit.script_if_tracing
 class Rescaling:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"log_scale": constraints.real}
@@ -56,11 +56,7 @@ class Rescaling:
     def __init__(self, log_scale: Tensor) -> None:
         self.log_scale = log_scale
 
-    @classmethod
-    def as_identity(cls, x: Tensor) -> Rescaling:
-        return cls(log_scale=torch.zeros_like(x))
-
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         s = self.log_scale.expand_as(x)
         y = x * torch.exp(s)
         ldj = sum_except_batch(s)
@@ -73,6 +69,7 @@ class Rescaling:
         return x, ldj
 
 
+@torch.jit.script
 class AffineTransform:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {
@@ -84,22 +81,17 @@ class AffineTransform:
         self.log_scale = log_scale
         self.shift = shift
 
-    @classmethod
-    def as_identity(cls, x: Tensor) -> Tensor:
-        return cls(log_scale=torch.zeros_like(x), shift=torch.zeros_like(x))
-
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         s, t = self.log_scale.expand_as(x), self.shift.expand_as(x)
         y = x * torch.exp(s) + t
         ldj = sum_except_batch(s)
         return y, ldj
 
     def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
-        s, t = self.log_scale.expand_as(x), self.shift.expand_as(x)
+        s, t = self.log_scale.expand_as(y), self.shift.expand_as(y)
         x = (y - t) * torch.exp(-s)
         ldj = sum_except_batch(self.log_scale).negative()
         return x, ldj
-
 
 class RQSplineTransform:
     """
@@ -141,10 +133,9 @@ class RQSplineTransform:
         upper_bound: float,
         bounded: bool,
         periodic: bool,
-        min_slope: float = 1e-3,
+        min_slope: float,
     ) -> None:
-        if periodic and not bounded:
-            raise ValueError
+        assert not (periodic and not bounded)
 
         assert widths.shape == heights.shape
 
@@ -155,6 +146,7 @@ class RQSplineTransform:
         # Ensure the derivatives are positive and > min_slope
         derivs = F.softplus(derivs) + min_slope
 
+        """
         if DEBUG:
             constraint = constraints.positive + constraints.SumToValue(
                 upper_bound - lower_bound, dim=-1
@@ -162,29 +154,28 @@ class RQSplineTransform:
             constraint.check(widths)
             constraint.check(heights)
             constraints.positive.check(derivs)
-
-        self._n_segments = widths.shape[-1]
+        """
 
         # Apply boundary conditions to the derivatives
         if not bounded:
             # match derivs with identity transform outside bounds
-            derivs = F.pad(derivs, (1, 1), "constant", 1)
+            derivs = F.pad(derivs, (1, 1), "constant", 1.0)
         elif periodic:
             # match derivs at 0 and 2pi
-            derivs = F.pad(derivs.flatten(1, -2), (0, 1), "circular").view(
-                *derivs.shape[:-1], -1
-            )
+            derivs = F.pad(
+                derivs.flatten(1, -2), (0, 1), "circular"
+            ).unflatten(1, derivs.shape[1:-1])
         else:
             # bounded and not periodic: no additional constraints
             derivs = derivs
 
-        assert derivs.shape[-1] == self._n_segments + 1
+        assert derivs.shape[-1] == widths.shape[-1] + 1
 
         zeros = torch.zeros(
-            size=(*widths.shape[:-1], 1),
+            size=widths.shape[:-1],
             device=widths.device,
             dtype=widths.dtype,
-        )
+        ).unsqueeze(-1)
 
         # Build the spline
         knots_x = torch.cat(
@@ -207,6 +198,7 @@ class RQSplineTransform:
         self.knots_y = knots_y
         self.knots_dydx = derivs
 
+        self._n_segments = widths.shape[-1]
         self._lower_bound = lower_bound
         self._upper_bound = upper_bound
         self._bounded = bounded
@@ -232,51 +224,13 @@ class RQSplineTransform:
     def periodic(self) -> bool:
         return self._periodic
 
-    @property
-    def domain(self) -> Constraint:
-        return (
-            constraints.OpenInterval(self.lower_bound, self.upper_bound)
-            if self.bounded
-            else constraints.real
-        )
-
-    @staticmethod
-    def identity_params(x: Tensor, n_segments: int) -> dict[str, Any]:
-        widths = (
-            torch.full_like(x, fill_value=(1 / n_segments))
-            .unsqueeze(-1)
-            .repeat([1 for _ in x.shape] + [n_segments])
-        )
-        derivs = (
-            torch.full_like(x, fill_value=math.log(math.e - 1))
-            .unsqueeze(-1)
-            .repeat([1 for _ in x.shape] + [n_segments - 1])
-        )
-        return {
-            "widths": widths,
-            "heights": widths.clone(),
-            "derivs": derivs,
-            "min_slope": 0,
-        }
-
-    @classmethod
-    def as_identity(
-        cls,
-        x: Tensor,
-        n_segments: int,
-    ) -> RQSplineTransform:
-        widths = (
-            torch.full_like(x, fill_value=(1 / n_segments))
-            .unsqueeze(-1)
-            .repeat([1 for _ in x.shape] + [n_segments])
-        )
-        heights = widths
-        derivs = (
-            torch.full_like(x, fill_value=math.log(math.e - 1))
-            .unsqueeze(-1)
-            .repeat([1 for _ in x.shape] + [n_segments - 1])
-        )
-        return cls(widths, heights, derivs)  # .........
+    # @property
+    # def domain(self) -> Constraint:
+    #    return (
+    #        constraints.OpenInterval(self.lower_bound, self.upper_bound)
+    #        if self.bounded
+    #        else constraints.real
+    #    )
 
     def handle_inputs_outside_bounds(
         self, inputs: Tensor, outside_bounds_mask: BoolTensor
@@ -306,7 +260,7 @@ class RQSplineTransform:
             pass  # TODO: log.info
 
     def _get_segment(
-        self, inputs: Tensor, inverse: bool = False
+        self, inputs: Tensor, inverse: bool
     ) -> tuple[
         Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, BoolTensor
     ]:
@@ -322,18 +276,31 @@ class RQSplineTransform:
         )
         i0_i1 = torch.stack((i0, i0 + 1), dim=0)
 
-        x0, x1 = self.knots_x.gather(-1, i0_i1).squeeze(-1)
-        y0, y1 = self.knots_y.gather(-1, i0_i1).squeeze(-1)
-        d0, d1 = self.knots_dydx.gather(-1, i0_i1).squeeze(-1)
+        x0_x1 = (
+            expand_like_stack(self.knots_x, 2).gather(-1, i0_i1).squeeze(-1)
+        )
+        y0_y1 = (
+            expand_like_stack(self.knots_y, 2).gather(-1, i0_i1).squeeze(-1)
+        )
+        d0_d1 = (
+            expand_like_stack(self.knots_dydx, 2).gather(-1, i0_i1).squeeze(-1)
+        )
+
+        # NOTE: Cannot do x0, x1 = x0_x1 with torchscript :(
+        x0, x1 = x0_x1[0], x0_x1[1]
+        y0, y1 = y0_y1[0], y0_y1[1]
+        d0, d1 = d0_d1[0], d0_d1[1]
 
         s = (y1 - y0) / (x1 - x0)
 
         return x0, x1, y0, y1, d0, d1, s, outside_bounds_mask
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         # assert list(x.shape) == self.knots_x.shape[:-1]
 
-        x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(x)
+        x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(
+            x, inverse=False
+        )
 
         θx = (x - x0) / (x1 - x0)
 
@@ -482,7 +449,7 @@ class IntegratedBSplineTransform:
     def domain(self) -> Constraint:
         return constraints.OpenInterval(self._lower_bound, self._upper_bound)
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
 
         x = (x - self.lower_bound) / (self.upper_bound - self.lower_bound)
 
@@ -533,7 +500,7 @@ class MobiusTransform:
     def identity_params(x: Tensor) -> dict[str, Tensor]:
         return {"omega": torch.zeros_like(x)}
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         ω = self.omega
         dydx = ((1 - dot(ω, ω)) / dot(x - ω, x - ω)).unsqueeze(-1)
         y = dydx * (x - ω) - ω
@@ -604,7 +571,7 @@ class MobiusMixtureTransform:
         )
         return {"omega": omega, "weights": weights}
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         ω, ρ = self.omega, self.weights
 
         x0 = torch.tensor([1, 0]).type_as(x).expand_as(x)
@@ -653,7 +620,7 @@ class ProjectedAffineTransform:
             "shift": torch.zeros_like(x) if shift else None,
         }
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         log_α, β = self.log_scale, self.shift
         α = torch.exp(log_α)
 
@@ -752,7 +719,7 @@ class ProjectedAffineMixtureTransform:
         )
         return {"log_scale": log_scale, "shift": shift, "weights": weights}
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
         log_α, β, ρ = self.log_scale, self.shift, self.weights
         α = torch.exp(log_α)
         x = x.unsqueeze(-1)  # mixture dimension

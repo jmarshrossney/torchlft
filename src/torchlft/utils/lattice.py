@@ -24,7 +24,7 @@ def assert_valid_partitioning(*masks: BoolTensor) -> None:
 
 
 def make_checkerboard(
-    lattice_shape: torch.Size, device: torch.device
+    lattice_shape: list[int], device: torch.device
 ) -> BoolTensor:
     """
     Returns a boolean mask that selects 'even' lattice sites.
@@ -32,7 +32,11 @@ def make_checkerboard(
     assert all(
         [n % 2 == 0 for n in lattice_shape]
     ), "each lattice dimension should be even"
-    checkerboard = torch.full(lattice_shape, fill_value=False, device=device)
+
+    # NOTE: interesting that torch.jit.trace fails for
+    # torch.full(lattice_shape, False, device=device)
+    checkerboard = torch.zeros(lattice_shape, dtype=torch.bool, device=device)
+
     if len(lattice_shape) == 1:
         checkerboard[::2] = True
     elif len(lattice_shape) == 2:
