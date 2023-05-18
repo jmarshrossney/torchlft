@@ -171,7 +171,7 @@ class NormalizingFlow(nn.Sequential):
 
             self.on_layer(ϕ_a, ϕ_b, ldj_total)
 
-         ϕ = ϕ_a.nan_to_num() + ϕ_b.nan_to_num()
+        ϕ = ϕ_a.nan_to_num() + ϕ_b.nan_to_num()
 
         return ϕ, ldj_total
 

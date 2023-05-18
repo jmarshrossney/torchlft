@@ -156,12 +156,14 @@ CouplingLayer = Union[
     AdditiveCouplingLayer, AffineCouplingLayer, RQSplineCouplingLayer
 ]
 
-class Geometry(nn.Module):
 
+class Geometry(nn.Module):
     def __init__(self, lattice_shape: tuple[int]):
         super().__init__()
         self.lattice_shape = lattice_shape
-        self.register_buffer("mask", make_checkerboard(lattice_shape, device="cpu"))
+        self.register_buffer(
+            "mask", make_checkerboard(lattice_shape, device="cpu")
+        )
 
     def partition(self, ϕ: Tensor) -> tuple[Tensor, Tensor]:
         return ϕ[:, self.mask], ϕ[:, ~self.mask]
@@ -187,8 +189,8 @@ class NormalizingFlow(nn.Module):
     def forward(self, ϕ: Tensor) -> tuple[Tensor, Tensor]:
         batch_size, L, T = ϕ.shape
 
-        #mask = make_checkerboard((L, T), device=ϕ.device)
-        #ϕ_a, ϕ_b = ϕ[:, mask], ϕ[:, ~mask]
+        # mask = make_checkerboard((L, T), device=ϕ.device)
+        # ϕ_a, ϕ_b = ϕ[:, mask], ϕ[:, ~mask]
         ϕ_a, ϕ_b = self.geometry.partition(ϕ)
 
         ldj_total = torch.zeros(batch_size, device=ϕ.device)
@@ -201,9 +203,9 @@ class NormalizingFlow(nn.Module):
 
         ϕ = self.geometry.restore(ϕ_a, ϕ_b)
 
-        #ϕ = torch.empty((batch_size, L, T), device=ϕ_a.device, dtype=ϕ_a.dtype)
-        #ϕ[:, mask] = ϕ_a
-        #ϕ[:, ~mask] = ϕ_b
+        # ϕ = torch.empty((batch_size, L, T), device=ϕ_a.device, dtype=ϕ_a.dtype)
+        # ϕ[:, mask] = ϕ_a
+        # ϕ[:, ~mask] = ϕ_b
 
         return ϕ, ldj_total
 

@@ -93,6 +93,7 @@ class AffineTransform:
         ldj = sum_except_batch(self.log_scale).negative()
         return x, ldj
 
+
 class RQSplineTransform:
     """
     This uses the parametrisation introduced by Gregory and Delbourgo
@@ -390,7 +391,6 @@ class IntegratedBSplineTransform:
         min_interval: float = 1e-1,
         min_weight: float = 1e-3,
     ):
-
         self._lower_bound = lower_bound
         self._upper_bound = upper_bound
 
@@ -450,7 +450,6 @@ class IntegratedBSplineTransform:
         return constraints.OpenInterval(self._lower_bound, self._upper_bound)
 
     def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
-
         x = (x - self.lower_bound) / (self.upper_bound - self.lower_bound)
 
         i = torch.searchsorted(self.knots_x, x, side="right").clamp(

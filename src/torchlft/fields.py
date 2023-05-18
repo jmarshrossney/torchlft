@@ -31,7 +31,6 @@ DEBUG: bool = True
 
 class Field(ABC):
     def __init__(self, data: Tensor, **metadata) -> None:
-
         if DEBUG:
             self.domain.check(data)
 
@@ -111,7 +110,6 @@ class Field(ABC):
 
 class CanonicalField(Field):
     def __init__(self, data: Tensor, **metadata):
-
         shape_metadata = dict(
             batch_size=len(data),
             lattice_shape=data.shape[1 : 1 + self.lattice_dim],
@@ -403,6 +401,7 @@ class CanonicalClassicalSpinField(CanonicalField):
 # Have to do this after defining the canonical classes
 _ScalarFieldMixin.canonical_class = CanonicalScalarField
 _AngularFieldMixin.canonical_class = CanonicalAngularField
+
 
 # Not working
 class ScalarField(Field):

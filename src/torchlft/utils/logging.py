@@ -26,7 +26,6 @@ def log_to_tensorboard(
     value: Real | str | Sequence[Real] | Mapping[str, Real] | Figure,
     **kwargs,
 ) -> None:
-
     # If single-element tensor, unpack otherwise it will
     # (otherwise it will be treated as Iterable, not Real)
     if isinstance(value, Tensor):

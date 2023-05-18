@@ -4,7 +4,7 @@ ignore =
     W503
     F401
     F403
-    #F405
+    F405
 per-file-ignores =
 exclude = 
     pyproject.toml

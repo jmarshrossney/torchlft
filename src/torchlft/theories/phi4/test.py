@@ -2,22 +2,23 @@ import torch
 from torchlft.theories.phi4.coupling_flow_fnn import *
 import torchlft.constraints as constraints
 
-H = [100,]
+H = [
+    100,
+]
 L = [20, 20]
 D = 4
 
 DEVICE = "cuda"
 
 layers_1 = [
-    AdditiveCouplingLayer(
-        L, hidden_shape=H, activation=torch.nn.Tanh()
-    )
+    AdditiveCouplingLayer(L, hidden_shape=H, activation=torch.nn.Tanh())
     for _ in range(D)
 ]
 
 layers_2 = [
-       AffineCouplingLayer(L, hidden_shape=H, activation=torch.nn.Tanh()) for _ in range(D)
-       ]
+    AffineCouplingLayer(L, hidden_shape=H, activation=torch.nn.Tanh())
+    for _ in range(D)
+]
 
 layers_3 = [
     RQSplineCouplingLayer(
@@ -38,13 +39,13 @@ sample = torch.randn(100, *L, device=DEVICE)
 # Test it works
 flow(sample)
 
-#torch.jit._state.disable()
+# torch.jit._state.disable()
 
 print("JIT enabled: ", torch.jit._state._enabled.enabled)
 
 traced = torch.jit.trace(flow, (torch.randn(10, *L, device=DEVICE),))
 traced(sample)
-#print("Traced ", type(traced))
+# print("Traced ", type(traced))
 
 """
 for name, submodule in traced.named_children():
@@ -59,8 +60,8 @@ for name, submodule in traced.named_children():
 
 scripted = torch.jit.script(flow)
 scripted(sample)
-#print("Scripted:", type(scripted))
-#print(scripted.code)
+# print("Scripted:", type(scripted))
+# print(scripted.code)
 
 from time import time
 
@@ -72,16 +73,15 @@ for _ in range(R):
     _ = flow(torch.randn(N, *L, device=DEVICE))
 t2 = time()
 print("No JIT: ", (t2 - t1) / R)
-   
+
 t1 = time()
 for _ in range(R):
     _ = traced(torch.randn(N, *L, device=DEVICE))
 t2 = time()
 print("Traced: ", (t2 - t1) / R)
-   
+
 t1 = time()
 for _ in range(R):
     _ = scripted(torch.randn(N, *L, device=DEVICE))
 t2 = time()
 print("Scripted: ", (t2 - t1) / R)
-
