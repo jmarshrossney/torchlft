@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, ABCMeta, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias, Protocol
+
+import torch
+
 
 from torchlft.fields import (
     Field,
@@ -14,6 +17,30 @@ from torchlft.fields import (
 
 if TYPE_CHECKING:
     from torchlft.constraints import Constraint
+
+Tensor = torch.Tensor
+
+
+class BaseDensity(torch.nn.Module, metaclass=ABCMeta):
+    @abstractmethod
+    def action(self, configs: Field) -> Tensor:
+        ...
+
+    @abstractmethod
+    def sample(self, batch_size: int) -> Field:
+        ...
+
+
+class Geometry(Protocol):
+    def partition(
+        self, fields: Tensor | tuple[Tensor, ...]
+    ) -> tuple[Tensor, ...] | tuple[tuple[Tensor, ...], ...]:
+        ...
+
+    def restore(
+        self, partitions: tuple[Tensor, ...] | tuple[tuple[Tensor, ...], ...]
+    ) -> Tensor | tuple[Tensor, ...]:
+        ...
 
 
 class FieldTransform(torch.nn.Module, metaclass=ABCMeta):

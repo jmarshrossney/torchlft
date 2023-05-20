@@ -11,7 +11,6 @@ import torch
 import torch.utils.tensorboard as tensorboard
 import tqdm
 
-from torchlft.abc import SamplingAlgorithm
 from torchlft.actions import (
     phi_four_action,
     phi_four_action_local,

@@ -17,3 +17,4 @@ exclude =
     .hypothesis
     docs
     __pycache__
+    workbench

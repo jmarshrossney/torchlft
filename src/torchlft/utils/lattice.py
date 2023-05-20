@@ -23,9 +23,7 @@ def assert_valid_partitioning(*masks: BoolTensor) -> None:
     raise Exception(msg)  # TODO custom exc
 
 
-def make_checkerboard(
-    lattice_shape: list[int], device: torch.device
-) -> BoolTensor:
+def make_checkerboard(lattice_shape: list[int]) -> BoolTensor:
     """
     Returns a boolean mask that selects 'even' lattice sites.
     """
@@ -35,7 +33,7 @@ def make_checkerboard(
 
     # NOTE: interesting that torch.jit.trace fails for
     # torch.full(lattice_shape, False, device=device)
-    checkerboard = torch.zeros(lattice_shape, dtype=torch.bool, device=device)
+    checkerboard = torch.zeros(lattice_shape, dtype=torch.bool)
 
     if len(lattice_shape) == 1:
         checkerboard[::2] = True
@@ -95,7 +93,7 @@ def nearest_neighbour_kernel(lattice_dim) -> Tensor:
 
 def build_neighbour_list(
     lattice_shape: torch.Size,
-) -> list[list[int, ...], ...]:
+) -> list[list[int]]:
     indices = torch.arange(math.prod(lattice_shape)).view(lattice_shape)
     lattice_dims = range(len(lattice_shape))
     neighbour_indices = torch.stack(

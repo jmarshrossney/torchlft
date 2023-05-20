@@ -27,10 +27,11 @@ DEBUG = False
 # May lead to hard to catch bugs
 
 
-@torch.jit.script
 class Translation:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"shift": constraints.real}
+    pointwise: bool = True
+    n_params: int = 1
 
     def __init__(self, shift: Tensor) -> None:
         self.shift = shift
@@ -48,10 +49,11 @@ class Translation:
         return x, ldj
 
 
-@torch.jit.script_if_tracing
 class Rescaling:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"log_scale": constraints.real}
+    pointwise: bool = True
+    n_params: int = 1
 
     def __init__(self, log_scale: Tensor) -> None:
         self.log_scale = log_scale
@@ -69,13 +71,14 @@ class Rescaling:
         return x, ldj
 
 
-@torch.jit.script
 class AffineTransform:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {
         "log_scale": constraints.real,
         "shift": constraints.real,
     }
+    pointwise = True
+    n_params = 2
 
     def __init__(self, log_scale: Tensor, shift: Tensor) -> None:
         self.log_scale = log_scale
@@ -123,6 +126,8 @@ class RQSplineTransform:
         Quadratic Spline Interpolation to Monotonic Data, IMA Journal of \
         Numerical Analysis, 1983, 3, 141-152
         """
+
+    pointwise = True
 
     def __init__(
         self,

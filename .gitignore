@@ -6,4 +6,4 @@ __pycache__/
 .hypothesis
 docs/_build
 docs/source/torchlft.*
-lightning_logs/
+workbench
