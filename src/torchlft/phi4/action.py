@@ -4,17 +4,12 @@ from functools import partial
 from typing import NamedTuple, TYPE_CHECKING
 
 import torch
+import torch.nn as nn
 
 from torchlft.utils.tensor import sum_except_batch
 
 if TYPE_CHECKING:
     from torchlft.typing import *
-
-__all__ = [
-    "Couplings",
-    "action",
-    "Action",
-]
 
 
 class InvalidCouplings(Exception):
@@ -104,7 +99,7 @@ def get_action(**couplings: dict[str, float]) -> Callable[Tensor, Tensor]:
     .. math::
 
         S(\phi) = \sum_{x\in\Lambda} \left[
-            -\kappa \sum_{\mu=1}^d \phi(x) \phi(x+e_\mu)
+            -\frac{\beta}{2} \sum_{\mu=1}^d \phi(x) \phi(x+e_\mu)
             + \alpha \phi(x)^2
             + \lambda \phi(x)^4
         \right]
@@ -119,21 +114,29 @@ def get_action(**couplings: dict[str, float]) -> Callable[Tensor, Tensor]:
     return partial(_action, couplings=_parse_couplings(couplings))
 
 
-class Action:
-    """
-    Class-based implementation of :func:`action`.
-    """
+def _action_gradient(
+    configs: Tensor,
+    couplings: Couplings,
+) -> Tensor:
+    ϕ, β, α, λ = configs, *couplings
 
-    def __init__(self, **couplings: dict[str, float]) -> None:
-        self._couplings = _parse_couplings(couplings)
+    grad = torch.zeros_like(ϕ)
 
-    @property
-    def couplings(self) -> Couplings:
-        return self._couplings
+    # Nearest neighbour interaction: +ve and -ve shifts
+    for μ in range(1, ϕ.dim()):
+        grad -= β * (ϕ.roll(-1, μ) + ϕ.roll(+1, μ))
 
-    def __call__(self, sample: Tensor) -> Tensor:
-        """Calls ``action`` with the sample provided."""
-        return _action(sample, self._couplings)
+    grad += 2 * α * ϕ
+
+    grad += 4 * λ * ϕ.pow(3)
+
+    return grad
+
+
+def get_action_gradient(
+    **couplings: dict[str, float]
+) -> Callable[Tensor, Tensor]:
+    return partial(_action_gradient, couplings=_parse_couplings(couplings))
 
 
 def _local_action(
@@ -152,3 +155,49 @@ def get_local_action(
     phi: float, neighbours: list[float], **couplings: dict[str, float]
 ) -> Callable[[float, list[float]], float]:
     return partial(_local_action, couplings=_parse_couplings(couplings))
+
+
+class Action:
+    """
+    Class-based implementation of :func:`action`.
+    """
+
+    def __init__(self, **couplings: dict[str, float]):
+        self._couplings = _parse_couplings(couplings)
+
+    @property
+    def couplings(self) -> Couplings:
+        return self._couplings
+
+    def compute(self, ϕ: Tensor) -> Tensor:
+        """Calls ``action`` with the sample provided."""
+        return _action(ϕ, self._couplings)
+
+    def gradient(self, ϕ: Tensor) -> Tensor:
+        return _action_gradient(ϕ, self._couplings)
+
+
+class FlowedAction(nn.Module):
+    def __init__(self, flow: NormalizingFlow, **couplings: dict[str, float]):
+        super().__init__()
+        self.flow = flow
+        self._couplings = _parse_couplings(couplings)
+
+    @property
+    def couplings(self) -> Couplings:
+        return self._couplings
+
+    @torch.no_grad()
+    def compute(self, ϕ_t: Tensor) -> Tensor:
+        ϕ_0, ldj = self.flow(ϕ_t)
+        return _action(ϕ_0, self._couplings) - ldj
+
+    @torch.enable_grad()
+    def gradient(self, ϕ_t: Tensor) -> Tensor:
+        ϕ_t.requires_grad_(True)
+        ϕ_0, ldj = self.flow(ϕ_t)
+        S = _action(ϕ_0, self._couplings) - ldj
+        (grad,) = torch.autograd.grad(
+            outputs=S, inputs=ϕ_t, grad_outputs=torch.ones_like(S)
+        )
+        return grad

@@ -4,7 +4,7 @@ from abc import ABC, ABCMeta, abstractmethod
 from typing import TYPE_CHECKING, TypeAlias, Protocol
 
 import torch
-
+import torch.nn as nn
 
 from torchlft.fields import (
     Field,
@@ -21,13 +21,26 @@ if TYPE_CHECKING:
 Tensor = torch.Tensor
 
 
-class BaseDensity(torch.nn.Module, metaclass=ABCMeta):
+# ABC or protocol?
+class BaseAction(nn.Module, metaclass=ABCMeta):
     @abstractmethod
-    def action(self, configs: Field) -> Tensor:
+    def compute(self, configs: Tensor | tuple[Tensor, ...]) -> Tensor:
         ...
 
     @abstractmethod
-    def sample(self, batch_size: int) -> Field:
+    def gradient(self, configs: Tensor | tuple[Tensor, ...]) -> Tensor:
+        ...
+
+    @abstractmethod
+    def sample(self, size: int) -> Tensor | tuple[Tensor, ...]:
+        ...
+
+
+class TargetAction(Protocol):
+    def compute(self, configs: Tensor | tuple[Tensor, ...]) -> Tensor:
+        ...
+
+    def gradient(self, configs: Tensor | tuple[Tensor, ...]) -> Tensor:
         ...
 
 
@@ -40,23 +53,4 @@ class Geometry(Protocol):
     def restore(
         self, partitions: tuple[Tensor, ...] | tuple[tuple[Tensor, ...], ...]
     ) -> Tensor | tuple[Tensor, ...]:
-        ...
-
-
-class FieldTransform(torch.nn.Module, metaclass=ABCMeta):
-    @property
-    @abstractmethod
-    def domain(self) -> Constraint:
-        ...
-
-    @property
-    def codomain(self) -> Constraint:
-        return self.domain
-
-    @abstractmethod
-    def forward(self, Φ: Field) -> tuple[Field, Tensor]:
-        ...
-
-    @abstractmethod
-    def inverse(self, Ψ: Field) -> tuple[Field, Tensor]:
         ...

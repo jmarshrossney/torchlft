@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import torch
 import torch.linalg as LA
 
-from torchlft.constraints import real
+from torchlft.abc import BaseAction
 from torchlft.fields import CanonicalScalarField, ScalarField
 from torchlft.utils.distribution import expand_iid
 from torchlft.utils.tensor import sum_except_batch
@@ -23,19 +23,8 @@ if TYPE_CHECKING:
     from torchlft.typing import *
 
 
-class BaseDensity(torch.nn.Module, metaclass=ABCMeta):
-    @abstractmethod
-    def action(self, configs: Field) -> Tensor:
-        ...
-
-    @abstractmethod
-    def sample(self, batch_size: int) -> Field:
-        ...
-
-
-class IsotropicGaussianBase(BaseDensity):
-    domain = real
-
+# Thermodynamic limit β->0
+class ActionThermodynamicLimit(BaseAction):
     def __init__(self, lattice_shape: torch.Size):
         super().__init__()
         self.lattice_shape = lattice_shape
@@ -48,19 +37,19 @@ class IsotropicGaussianBase(BaseDensity):
             extra_dims=lattice_shape,
         )
 
-    def action(self, configs: ScalarField) -> Tensor:
-        configs = configs.to_canonical()
-        log_density = self._distribution.log_prob(configs.tensor)
-        return log_density.negative()
+    def compute(self, ϕ: Tensor) -> Tensor:
+        log_density_gauss = self._distribution.log_prob(ϕ)
+        return log_density_gauss.negative()
 
-    def sample(self, batch_size: int) -> CanonicalScalarField:
-        data = self._distribution.sample([batch_size])
-        return CanonicalScalarField(data)
+    def gradient(self, ϕ: Tensor) -> Tensor:
+        return ϕ / self.scale.pow(2)
+
+    def sample(self, n: int) -> Tensor:
+        return self._distribution.sample([n])
 
 
-class FreeScalarBase(BaseDensity):
-    domain = real
-
+# Gaussian limit λ->0
+class ActionGaussianLimit(BaseAction):
     def __init__(self, lattice_shape: torch.Size, m_sq: float):
         if len(lattice_shape) != 2:
             # TODO: support other dims
@@ -84,13 +73,16 @@ class FreeScalarBase(BaseDensity):
             precision_matrix=self.inverse_covariance,
         )
 
-    def action(self, configs: ScalarField) -> Tensor:
-        configs = configs.to_canonical()
-        log_density = self._distribution.log_prob(
-            configs.tensor.flatten(start_dim=1)
-        )
-        return log_density.negative()
+    def compute(self, ϕ: Tensor) -> Tensor:
+        log_density_gauss = self._distribution.log_prob(ϕ.flatten(start_dim=1))
+        return log_density_gauss.negative()
 
-    def sample(self, batch_size: int) -> CanonicalScalarField:
-        data = self._distribution.sample([batch_size])
-        return CanonicalScalarField(data.view(batch_size, *self.lattice_shape))
+    def gradient(self, ϕ: Tensor) -> Tensor:
+        raise NotImplementedError  # TODO
+
+    def sample(self, n: int) -> Tensor:
+        ϕ_flat = self._distribution.sample([n])
+        return ϕ_flat.unflatten(1, self.lattice_shape)
+
+
+# TODO: Ising limit? λ->inf
