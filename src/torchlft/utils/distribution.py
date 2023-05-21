@@ -3,17 +3,16 @@ A collection of utils for constructing objects based on distributions.
 """
 from __future__ import annotations
 
+from types import MethodType
+
 import torch
+import torch.nn as nn
 import torch.distributions
 import pytorch_lightning as pl
 
-from torchnf.utils.tensor import sum_except_batch
+from torchlft.utils.tensor import sum_except_batch
 
-__all__ = [
-    "expand_iid",
-    "gaussian",
-    "uniform",
-]
+Tensor = torch.Tensor
 
 
 def expand_iid(
@@ -96,19 +95,41 @@ def expand_iid(
     return distribution
 
 
-def gaussian(
-    shape: torch.Size,
-) -> torch.distributions.Normal:
-    """
-    Creates a Gaussian with null mean and unit diagonal covariance.
+class DistributionModule(nn.Module):
+    def __init__(
+        self,
+        cls: type[torch.distributions.Distribution],
+        **kwargs,
+    ):
+        super().__init__()
+        for key, val in kwargs.items():
+            self.register_buffer(key, torch.as_tensor(val))
 
-    This is a convenience function which just calls :func:`expand_iid`
-    with ``distribution=torch.distributions.Normal(0, 1)``.
-    """
-    return expand_iid(torch.distributions.Normal(0, 1), shape)
+        params = {key: getattr(self, key) for key, val in kwargs.items()}
+        self.distribution = cls(**params)
 
 
-def uniform(
-    shape: torch.Size,
-) -> torch.distributions.Normal:
-    return expand_iid(torch.distributions.Uniform(0, 1), shape)
+class DiagonalGaussianModule(DistributionModule):
+    def __init__(self, shape: torch.Size):
+        super().__init__(torch.distributions.Normal, loc=0.0, scale=1.0)
+        self.distribution = expand_iid(
+            self.distribution,
+            extra_dims=shape,
+        )
+
+
+class GaussianModule(DistributionModule):
+    def __init__(
+        self,
+        mean: Tensor,
+        *,
+        covariance: Tensor | None = None,
+        precision: Tensor | None = None,
+    ):
+        assert (covariance is not None) ^ (precision is not None)
+        kwargs = {
+            "covariance_matrix": covariance,
+            "precision_matrix": precision,
+            "loc": mean,
+        }
+        super().__init__(torch.distributions.MultivariateNormal, **kwargs)

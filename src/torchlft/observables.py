@@ -1,44 +1,111 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import NamedTuple, TYPE_CHECKING
 from math import pi as π, prod, sin
 
 import torch
 import torch.nn.functional as F
 
-from torchlft.abc import Field
-from torchlft.geometry import spherical_triangle_area
+from torchlft.utils.sphere import spherical_triangle_area
 
 if TYPE_CHECKING:
     from torchlft.typing import *
 
 
-def autocorrelation(observable: Tensor) -> Tensor:
-    assert observable.dim() > 0
+class IntegratedAutocorrelation:
+    class Errors(NamedTuple):
+        stat: Tensor
+        bias: Tensor
+        grad_stat: Tensor
+        grad_bias: Tensor
 
-    sample_size, *observable_shape = observable.shape
+    def __init__(self, observable: Tensor) -> Tensor:
+        assert observable.dim() > 0
 
-    # move sample dim to -1
-    observable = observabe.movedim(0, -1).contiguous()
+        self._sample_size = len(observable)
+        self._autocorrelation = self._compute_autocorrelation(observable)
 
-    # prepare dims for conv1d
-    observable = observable.view(-1, 1, 1, sample_size)
+    @property
+    def sample_size(self):
+        return self._sample_size
 
-    autocovariance = []
-    for o in observable:
-        autocovariance.append(
-            F.conv1d(
-                F.pad(o, (0, sample_size - 1)),
-                o,
-            ).squeeze()
+    @property
+    def autocorrelation(self) -> Tensor:
+        return self._autocorrelation
+
+    def estimate_errors(
+        self, factor: float = 2.0
+    ) -> IntegratedAutocorrelation.Errors:
+        # TODO: want option to inspect the process more thoroughly
+        τ_int = self.autocorrelation.cumsum(dim=-1)
+        λ = factor
+        N = self.sample_size
+        W = torch.arange(N)
+
+        τ_exp = (
+            ((2 * τ_int - 1) / (2 * τ_int + 1)).log().reciprocal().negative()
+        )
+        τ_exp = τ_exp.nan_to_num().clamp(min=1e-6)
+
+        # Statistical error (Eq. 42 in arxiv.org/pdf/hep-lat/0306017)
+        ε_stat = torch.sqrt((4 / N) * (W + 1 / 2 - τ_int)) * τ_int
+
+        # Truncation bias
+        ε_bias = -τ_int * torch.exp(-W / (λ * τ_exp))
+
+        # λ times W-derivative of the errors
+        dεdW_stat = τ_exp / torch.sqrt(N * W)
+        dεdW_bias = (-1 / λ) * torch.exp(-W / (λ * τ_exp))
+
+        return self.Errors(
+            stat=ε_stat,
+            bias=ε_bias,
+            grad_stat=dεdW_stat,
+            grad_bias=dεdW_bias,
         )
 
-    autocovariance = torch.stack(autocovariance).view(
-        *observable_shape, sample_size
-    )
-    autocorrelation = autocovariance / autocovariance[..., 0:1]
+    def compute(self, factor: float = 2.0) -> Tensor:
+        τ_int = self.autocorrelation.cumsum(dim=-1)
 
-    return autocorrelation
+        errors = self.estimate_errors(factor)
+        grad_error = errors.grad_stat + errors.grad_bias
+
+        # argmax returns first occurrence of derivative being positive, indicating
+        # that the total error will increase with increasing window size
+        idx = (
+            torch.argmax((grad_error[..., 1:] > 0).int(), dim=-1, keepdim=True)
+            + 1
+        )
+
+        return τ_int[idx]
+
+    @staticmethod
+    def _compute_autocorrelation(observable: Tensor) -> Tensor:
+        assert observable.dim() > 0
+
+        sample_size, *observable_shape = observable.shape
+
+        # move sample dim to -1
+        observable = observable.movedim(0, -1).contiguous()
+
+        # prepare dims for conv1d
+        observable = observable.view(-1, 1, 1, sample_size)
+
+        autocovariance = []
+        for o in observable:
+            autocovariance.append(
+                F.conv1d(
+                    F.pad(o, (0, sample_size - 1)),
+                    o,
+                ).squeeze()
+            )
+
+        autocovariance = torch.stack(autocovariance).view(
+            *observable_shape, sample_size
+        )
+        autocorrelation = autocovariance / autocovariance[..., 0:1]
+
+        return autocorrelation
 
 
 class _Observables:

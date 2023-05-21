@@ -101,7 +101,7 @@ class BoltzmannGenerator(nn.Module):
         outputs, ldj_forward = self(inputs)
         model_action = base_action + ldj_forward
         target_action = self.target.compute(outputs)
-        #log_weights = model_action - target_action
+        # log_weights = model_action - target_action
         return dict(
             inputs=inputs,
             output=outputs,

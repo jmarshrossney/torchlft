@@ -22,7 +22,12 @@ import torch.nn as nn
 from torchlft import constraints as constraints
 from torchlft.fields import CanonicalScalarField
 from torchlft.networks import make_fnn, make_cnn, Activation
-from torchlft.transforms import Translation, AffineTransform, RQSplineTransform
+from torchlft.transforms import (
+    Translation,
+    Rescaling,
+    AffineTransform,
+    RQSplineTransform,
+)
 from torchlft.utils.lattice import make_checkerboard
 
 from torchlft.typing import Transform
@@ -144,6 +149,21 @@ class CouplingLayerCNN(CouplingLayer):
         f_a = self.transform(θ_a)
         ϕ_b, ldj_b = f_a(ϕ_b)
 
+        return (ϕ_a, ϕ_b), ldj_a + ldj_b
+
+
+class GlobalRescaling(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.log_scale = nn.Parameter(torch.zeros(1))
+
+    def forward(
+        self, ϕ: tuple[Tensor, Tensor]
+    ) -> tuple[tuple[Tensor, Tensor], Tensor]:
+        ϕ_a, ϕ_b = ϕ
+        f = Rescaling(self.log_scale)
+        ϕ_a, ldj_a = f(ϕ_a)
+        ϕ_b, ldj_b = f(ϕ_b)
         return (ϕ_a, ϕ_b), ldj_a + ldj_b
 
 
@@ -291,4 +311,5 @@ def make_flow(
             [_make_layers(lattice_shape, spec) for spec in layers]
         )
     )
+    layers.append(GlobalRescaling())
     return NormalizingFlow(geometry, layers)

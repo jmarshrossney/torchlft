@@ -3,32 +3,27 @@ from __future__ import annotations
 import os
 import pathlib
 from collections.abc import Iterator
-from math import exp
-from random import random
 from typing import TYPE_CHECKING
 
 import torch
+import torch.nn as nn
 import torch.utils.tensorboard as tensorboard
 import tqdm
-
-from torchlft.actions import (
-    phi_four_action,
-    phi_four_action_local,
-)
-from torchlft.utils.lattice import build_neighbour_list
 
 if TYPE_CHECKING:
     from torchlft.typing import *
 
 
-class SamplingAlgorithm(Module, metaclass=ABCMeta):
+class SamplingAlgorithm(nn.Module, metaclass=ABCMeta):
     def __init__(self):
         super().__init__()
         self._global_step = None
-        self._transitions = None
 
-        # Initialise empty buffer
+        # Initialise empty buffer for state, transitions
+        # NOTE: possibly better to force cloning of state?
+        # TODO: figure out approach for states that are tuples of tensors
         self.register_buffer("state", None)
+        self.register_buffer("_transitions", None)
 
         self.requires_grad_(False)
         self.train(False)
@@ -42,7 +37,7 @@ class SamplingAlgorithm(Module, metaclass=ABCMeta):
         return self._global_step
 
     @property
-    def transitions(self) -> int:
+    def transitions(self) -> LongTensor:
         return self._transitions
 
     @property
@@ -51,7 +46,7 @@ class SamplingAlgorithm(Module, metaclass=ABCMeta):
 
     @property
     def pbar_stats(self) -> dict:
-        return {"steps": self._global_step, "moves": self._transitions}
+        return {"steps": self._global_step}
 
     def set_extra_state(self, state: dict) -> None:
         assert isinstance(state, dict), f"expected dict, but got {type(state)}"
@@ -85,7 +80,12 @@ class SamplingAlgorithm(Module, metaclass=ABCMeta):
 
     @staticmethod
     def _forward_post_hook(self_, input: None, output: bool | None) -> None:
-        self_._transitions += int(output) if type(output) is not None else 1
+        transitions = (
+            output.long()
+            if isinstance(output, torch.Tensor)
+            else (output if type(output) is not None else 1)
+        )
+        self_._transitions += transitions
 
     @abstractmethod
     def init(self) -> None:
@@ -108,6 +108,84 @@ class SamplingAlgorithm(Module, metaclass=ABCMeta):
         ...
 
 
+def metropolis_test(current: Tensor, proposal: Tensor) -> BoolTensor:
+    # NOTE: torch.exp(large number) returns 'inf' and
+    # ('inf' > x) for float x returns True, as required
+    return (proposal - current).exp() > torch.rand_like(current)
+
+
+class MCMCReweighting(SamplingAlgorithm):
+    def __init__(
+        self,
+        generator: Iterator[Tensor, Tensor],
+    ):
+        super().__init__()
+        self.generator = generator
+
+    @property
+    def context(self) -> dict:
+        return {"log_weight": self.log_weight}
+
+    def init(self) -> None:
+        state, log_weight = next(self.generator)
+        self.state = state
+        self.log_weight = log_weight
+
+    @torch.no_grad()
+    def forward(self) -> bool:
+        state, log_weight = next(self.generator)
+
+        accepted = metropolis_test(
+            current=self.log_weight, proposal=log_weight
+        )
+
+        self.state[accepted] = state[accepted]
+        self.log_weight[accepted] = log_weight[accepted]
+
+        return accepted
+
+
+class HybridMonteCarlo(SamplingAlgorithm):
+    def __init__(
+        self,
+        hamiltonian: Hamiltonian,
+        integrator: Callable[
+            [Tensor, Tensor, Hamiltonian], [Tensor, Tensor, float]
+        ],
+    ):
+        super().__init__()
+        self.hamiltonian = hamiltonian
+        self.integrator = integrator
+
+        self._delta_hamiltonian = []
+
+    def exp_delta_hamiltonian(self) -> Tensor:
+        return torch.stack(self._delta_hamiltonian).exp().mean(dim=0)
+
+    def forward(self) -> BoolTensor:
+        x0 = self.state
+        p0 = self.hamiltonian.sample_momenta(x0)
+        H0 = self.hamiltonian.compute(x0, p0)
+
+        xT, pT, T = self.integrator(
+            coords=x0,
+            momenta=p0,
+            hamiltonian=self.hamiltonian,
+            step_size=self.step_size,
+            traj_length=self.traj_length,
+        )
+
+        HT = self.hamiltonian.compute(xT, pT)
+
+        self._delta_hamiltonian = H0 - HT
+
+        accepted = metropolis_test(current=-H0, proposal=-HT)
+
+        self.state[accepted] = xT[accepted]
+
+        return accepted
+
+
 class Sampler:
     def __init__(
         self,
@@ -115,10 +193,12 @@ class Sampler:
         output_dir: Optional[Union[str, os.PathLike]] = None,
     ):
         self._algorithm = algorithm
+
         if output_dir is not None:
             self._output_dir = pathlib.Path(str(output_dir)).resolve()
         else:
             self._output_dir = None
+
         self._run_idx = 0
 
         if hasattr(self._algorithm, "sweep_length"):
@@ -141,6 +221,10 @@ class Sampler:
         Directory for sampling outputs.
         """
         return self._output_dir
+
+    @property
+    def logger(self) -> tensorboard.writer.SummaryWriter | None:
+        return getattr(self, "_logger", None)
 
     @property
     def run_idx(self) -> int:
@@ -182,17 +266,15 @@ class Sampler:
         self,
         size: int = 1,
         interval: int = 1,
-    ):
-        configs = torch.full_like(self._algorithm.state, float("NaN")).repeat(
-            size, *(1 for _ in self._algorithm.state.shape)
-        )
+    ) -> list[Tensor | tuple[Tensor, ...]]:
+        output = []
         with tqdm.trange(
-            size, desc="Sampling", postfix=self._algorithm.pbar_stats
+            size, desc="Sampling", postfix=self.algorithm.pbar_stats
         ) as pbar:
             for i in pbar:
                 self._sample(interval)
-                configs[i] = self._algorithm.state
-                pbar.set_postfix(self._algorithm.pbar_stats)
+                output.append(self.algorithm.state)
+                pbar.set_postfix(self.algorithm.pbar_stats)
 
         self._algorithm.on_final_sample()
 
@@ -201,217 +283,3 @@ class Sampler:
             self._logger.flush()
 
         return configs
-
-
-def metropolis_test(delta_log_weight: float) -> bool:
-    return delta_log_weight > 0 or exp(delta_log_weight) > random()
-
-
-class MCMCReweighting(SamplingAlgorithm):
-    def __init__(
-        self,
-        generator: Iterator[Tensor, Tensor],
-    ):
-        super().__init__()
-        self.generator = generator
-
-    @property
-    def context(self) -> dict:
-        return {"log_weight": self.log_weight}
-
-    def init(self) -> None:
-        state, log_weight = next(self.generator)
-        self.state = state
-        self.log_weight = log_weight
-
-    def forward(self) -> bool:
-        state, log_weight = next(self.generator)
-
-        delta_log_weight = log_weight - self.log_weight
-
-        if metropolis_test(delta_log_weight):
-            self.state = state
-            self.log_weight = log_weight
-            return True
-        else:
-            return False
-
-
-class RandomWalkMetropolis(SamplingAlgorithm):
-    def __init__(
-        self,
-        lattice_shape: torch.Size,
-        step_size: float,
-        **couplings: dict[str, float],
-    ) -> None:
-        super().__init__()
-        self.lattice_shape = lattice_shape
-        self.step_size = step_size
-        self.couplings = couplings
-
-        self.lattice_size = math.prod(lattice_shape)
-        self.neighbour_list = build_neighbour_list(lattice_shape)
-
-    @property
-    def sweep_length(self) -> int:
-        return self.lattice_size
-
-    def init(self) -> None:
-        self.state = torch.empty(self.lattice_shape).normal_(0, 1)
-
-        # This is just a view of the original state
-        self.flattened_state = self.state.view(-1)
-
-    def forward(self) -> bool:
-        site_idx = torch.randint(0, self.lattice_size, [1]).item()
-        neighbour_idxs = self.neighbour_list[site_idx]
-
-        phi_old, *neighbours = self.flattened_state[
-            [site_idx, *neighbour_idxs]
-        ]
-        phi_new = phi_old + torch.randn(1).item() * self.step_size
-
-        old_action = phi_four_action_local(
-            phi_old, neighbours, **self.couplings
-        )
-        new_action = phi_four_action_local(
-            phi_new, neighbours, **self.couplings
-        )
-
-        if metropolis_test(old_action - new_action):
-            self.flattened_state[site_idx] = phi_new
-            return True
-        else:
-            return False
-
-
-class HamiltonianMonteCarlo(SamplingAlgorithm):
-    r"""
-    Hamiltonian (Hybrid) Monte Carlo sampling algorithm.
-
-    Proposed updates are generated by introducing a set of fictitious Gaussian
-    momenta :math:`\tilde\phi` and integrating the Hamiltonian system
-    :math:`(\phi, \tilde\phi)` along an iso-density (fixed energy) contour.
-
-    Momenta are drawn from a Gaussian
-
-    .. math::
-
-        \tilde\phi \sim \exp\left( \frac{1}{2} \tilde\phi^\top
-        M^{-1} \tilde\phi \right)
-
-    The integration is carried out using the leapfrog algorithm:
-
-    .. math::
-
-        \tilde\phi\left(t + \frac{\delta t}{2}\right) = \tilde\phi(t)
-        - \frac{\delta t}{2} F(t)
-
-        \phi(t + \delta t) = \phi(t) + \delta t M^{-1} \tilde\phi
-
-        \tilde\phi(t+\delta t) = \tilde\phi\left(t+\frac{\delta t}{2}\right)
-        - \frac{\delta t}{2} F(t+\delta t)
-
-    At the end of the trajectory, the proposal is accepted or rejected based
-    on the result of the Metropolis test
-
-    Args:
-        lattice_shape:
-            Dimensions of the lattice
-        trajectory_length:
-            Total length of each molecular dynamics trajectory
-        steps:
-            Number of leapfrog updates to approximate the trajectory
-        mass_matrix:
-            A matrix of dimensions ``(lattice_size, lattice_size)`` that
-            is the covariance matrix from which initial momenta are drawn.
-            If not supplied, a unit diagonal covariance is used
-        couplings:
-            The couplings in the action
-    """
-
-    def __init__(
-        self,
-        lattice_shape: torch.Size,
-        trajectory_length: int,
-        steps: int,
-        mass_matrix: Optional[torch.Tensor] = None,
-        **couplings: dict[str, float],
-    ) -> None:
-        super().__init__()
-        self.lattice_shape = lattice_shape
-        self.trajectory_length = trajectory_length
-        self.steps = steps
-        self.couplings = couplings
-
-        self.lattice_size = math.prod(lattice_shape)
-
-        if mass_matrix is None:
-            mass_matrix = torch.eye(self.lattice_size)
-        self.momentum_distribution = torch.distributions.MultivariateNormal(
-            loc=torch.zeros(self.lattice_size), covariance_matrix=mass_matrix
-        )
-        self.inverse_mass_matrix = self.momentum_distribution.precision_matrix
-
-        # TODO: this is a bit hacky
-        self.potential = lambda state: phi_four_action(
-            state.view([1, *self.lattice_shape]), **self.couplings
-        )
-
-        # TODO: clean up namespace - too many attributes that might get
-        # overridden by someone subclassing and logging things
-
-    def init(self) -> None:
-        self.state = torch.empty(self.lattice_shape).normal_(0, 1)
-
-    def kinetic_term(self, momentum: torch.Tensor) -> torch.Tensor:
-        return 0.5 * torch.dot(
-            momentum, (torch.mv(self.inverse_mass_matrix, momentum))
-        )
-
-    def get_force(self, state: torch.Tensor) -> torch.Tensor:
-        """
-        Computes the generalised force driving the momentum update.
-
-        The forces are computed by differentiating the action with respect to
-        the generalised positions, i.e. the field configuration. In
-        practice PyTorch's autograd machinery is used.
-        """
-        state.requires_grad_()
-        state.grad = None
-        with torch.enable_grad():
-            self.potential(state).backward()
-        force = state.grad
-        state.requires_grad_(False)
-        state.grad = None
-        return force
-
-    def forward(self) -> bool:
-        state = self.state.clone().view(-1)
-        momentum = self.momentum_distribution.sample()
-
-        initial_hamiltonian = self.kinetic_term(momentum) + self.potential(
-            state
-        )
-
-        delta = self.trajectory_length / self.steps
-
-        # Begin leapfrog integration
-        momentum -= delta / 2 * self.get_force(state)
-
-        for _ in range(self.steps - 1):
-            state = state.addmv(
-                self.inverse_mass_matrix, momentum, alpha=delta
-            )
-            momentum -= delta * self.get_force(state)
-
-        state.addmv_(self.inverse_mass_matrix, momentum, alpha=delta)
-        momentum -= delta / 2 * self.get_force(state)
-
-        final_hamiltonian = self.kinetic_term(momentum) + self.potential(state)
-
-        if metropolis_test(initial_hamiltonian - final_hamiltonian):
-            self.state = state.view(self.lattice_shape)
-            return True
-        else:
-            return False

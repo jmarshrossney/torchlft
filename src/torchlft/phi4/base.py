@@ -1,5 +1,4 @@
 """
-
 The advantage of subclass torch.nn.Module and registering distribution parameters
 as buffers is that they can be moved to the correct device with Module.to(device).
 This is done under the hood by PyTorch Lightning.
@@ -14,43 +13,34 @@ import torch
 import torch.linalg as LA
 
 from torchlft.abc import BaseAction
-from torchlft.fields import CanonicalScalarField, ScalarField
-from torchlft.utils.distribution import expand_iid
+from torchlft.utils.distribution import Gaussian, DiagonalGaussian
 from torchlft.utils.tensor import sum_except_batch
 from torchlft.utils.lattice import laplacian_2d
+from torchlft.utils.linalg import mv
 
 if TYPE_CHECKING:
     from torchlft.typing import *
 
 
 # Thermodynamic limit β->0
-class ActionThermodynamicLimit(BaseAction):
-    def __init__(self, lattice_shape: torch.Size):
-        super().__init__()
+class DiagonalGaussianAction(DiagonalGaussianModule):
+    def __init__(self, lattice_shape: tuple[int, ...]):
+        super().__init__(shape=lattice_shape)
         self.lattice_shape = lattice_shape
 
-        self.register_buffer("loc", torch.tensor([0.0]))
-        self.register_buffer("scale", torch.tensor([1.0]))
-
-        self._distribution = expand_iid(
-            torch.distributions.Normal(loc=self.loc, scale=self.scale),
-            extra_dims=lattice_shape,
-        )
-
     def compute(self, ϕ: Tensor) -> Tensor:
-        log_density_gauss = self._distribution.log_prob(ϕ)
-        return log_density_gauss.negative()
+        return self.distribution.log_prob(ϕ).negative()
 
     def gradient(self, ϕ: Tensor) -> Tensor:
-        return ϕ / self.scale.pow(2)
+        return ϕ / self.distribution.scale.pow(2)
 
     def sample(self, n: int) -> Tensor:
-        return self._distribution.sample([n])
+        return self.distribution.sample([n])
 
 
 # Gaussian limit λ->0
-class ActionGaussianLimit(BaseAction):
-    def __init__(self, lattice_shape: torch.Size, m_sq: float):
+class GaussianAction(GaussianModule):
+    def __init__(self, lattice_shape: tuple[int, int], m_sq: float):
         if len(lattice_shape) != 2:
             # TODO: support other dims
             raise ValueError(
@@ -60,29 +50,43 @@ class ActionGaussianLimit(BaseAction):
         if L != T:
             raise ValueError("Only 2-d lattices of equal length are supported")
 
+        # Currently this only works for square lattices
+        precision = laplacian_2d(L) + m_sq * torch.eye(L * T)
+        mean = torch.zeros(L * T)
+
+        super().__init__(mean, precision=precision)
+
         self.lattice_shape = lattice_shape
 
-        # Currently this only works for square lattices
-        inverse_covariance = laplacian_2d(L) + m_sq * torch.eye(L * T)
-
-        self.register_buffer("loc", torch.zeros(L * T))
-        self.register_buffer("inverse_covariance", inverse_covariance)
-
-        self._distribution = torch.distributions.MultivariateNormal(
-            loc=self.log,
-            precision_matrix=self.inverse_covariance,
-        )
-
     def compute(self, ϕ: Tensor) -> Tensor:
-        log_density_gauss = self._distribution.log_prob(ϕ.flatten(start_dim=1))
+        log_density_gauss = self.distribution.log_prob(ϕ.flatten(start_dim=1))
         return log_density_gauss.negative()
 
     def gradient(self, ϕ: Tensor) -> Tensor:
-        raise NotImplementedError  # TODO
+        K = self.distribution.precision_matrix
+        return mv(K, ϕ)
+
+    def gradient_(self, ϕ: Tensor) -> Tensor:
+        grad = ϕ.roll(-1, 1) + ϕ.roll(+1, 1) + ϕ.roll(-1, 2) + ϕ.roll(+1, 2)
+        grad += (4 + self.m_sq) * ϕ
+        return grad
 
     def sample(self, n: int) -> Tensor:
-        ϕ_flat = self._distribution.sample([n])
+        ϕ_flat = self.distribution.sample([n])
         return ϕ_flat.unflatten(1, self.lattice_shape)
 
 
-# TODO: Ising limit? λ->inf
+class FlowedBaseAction(nn.Module):
+    def __init__(self, base, flow: NormalizingFlow):
+        super().__init__()
+        self.base = base
+        self.flow = flow
+
+    def compute(self, ϕ_t: Tensor) -> Tensor:
+        S_0 = self.base.compute(ϕ_t)
+        ϕ_0, ldj = self.flow(ϕ_t)
+        S_t = S_0 + ldj
+        return S_t
+
+
+# TODO: Ising limit? λ->inf. Or smooth bimodal prior in broken symmetry phase?

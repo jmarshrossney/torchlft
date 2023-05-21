@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
-from torchlft.utils.tensor import dot, cross
+from torchlft.utils.linalg import dot, cross
 
 if TYPE_CHECKING:
     from torchlft.typing import *

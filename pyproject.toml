@@ -27,6 +27,7 @@ pytorch-lightning = "2.0"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+testpaths = ["tests", "benchmarks"]
 python_files = ["test*.py", "benchmark*.py"]
 python_functions = ["test", "benchmark"]
 filterwarnings = [
