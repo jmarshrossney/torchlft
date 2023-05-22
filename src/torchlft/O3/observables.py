@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from torchlft.abc import Field
 from torchlft.geometry import spherical_triangle_area
+from torchlft.utils.lattice import correlator_restore_geom
 
 if TYPE_CHECKING:
     from torchlft.typing import *
@@ -29,17 +30,7 @@ def spin_spin_correlator(sample: CanonicalClassicalSpinField) -> Tensor:
         "bia,bja->ij", sample_lexi, sample_lexi
     ) / len(sample_lexi)
 
-    L, T = configs.lattice_shape
-    return torch.stack(
-        [
-            row.view(L, T).roll(
-                ((-i // T), (-i % L)),
-                dims=(0, 1),
-            )
-            for i, row in enumerate(correlator_lexi.split(1, dim=0))
-        ],
-        dim=0,
-    ).mean(dim=0)
+    return correlator_restore_geom(correlator_lexi, configs.lattice_shape)
 
 
 def topological_charge(sample: CanonicalClassicalSpinField) -> Tensor:

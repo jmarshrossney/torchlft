@@ -104,3 +104,23 @@ def build_neighbour_list(
         dim=1,
     )
     return neighbour_indices.tolist()
+
+def correlator_restore_geom(correlator_lexi: Tensor, lattice_shape: tuple[int, int]) -> Tensor:
+    """
+    Takes a volume average of 2-dimensional shifts
+    For each lattice site (row), restores the geometry by representing
+    the row as a 2d array where the axis correspond to displacements
+    in the two lattice directions. Then takes a volume average by
+    averaging over all rows (lattice sites)
+    """
+    L, T = lattice_shape
+    return torch.stack(
+        [
+            row.view(L, T).roll(
+                ((-i // T), (-i % L)),
+                dims=(0, 1),
+            )
+            for i, row in enumerate(correlator_lexi)
+        ],
+        dim=0,
+    ).mean(dim=0)
