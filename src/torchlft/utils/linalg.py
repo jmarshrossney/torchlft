@@ -1,20 +1,18 @@
-from __future__ import annotations
-
 from math import pi as π
-from typing import TYPE_CHECKING
 
 import torch
+from torch import einsum
 import torch.linalg as LA
 
-Tensor = torch.Tensor
+from torchlft.typing import Tensor
 
 
 def dot(x: Tensor, y: Tensor) -> Tensor:
-    return torch.einsum("...i,...i->...", x, y)
+    return einsum("...i,...i->...", x, y)
 
 
 def outer(x: Tensor, y: Tensor) -> Tensor:
-    return torch.einsum("...i,...j->...ij", x, y)
+    return einsum("...i,...j->...ij", x, y)
 
 
 def cross(x: Tensor, y: Tensor) -> Tensor:
@@ -22,11 +20,11 @@ def cross(x: Tensor, y: Tensor) -> Tensor:
 
 
 def mv(M: Tensor, v: Tensor) -> Tensor:
-    return torch.einsum("...ij,...j->...i", M, v)
+    return einsum("...ij,...j->...i", M, v)
 
 
 def vm(v: Tensor, M: Tensor) -> Tensor:
-    return torch.einsum("...i,...ij->...j", v, M)
+    return einsum("...i,...ij->...j", v, M)
 
 
 def projector(x: Tensor) -> Tensor:

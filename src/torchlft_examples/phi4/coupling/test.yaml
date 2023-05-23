@@ -1,0 +1,6 @@
+lattice_shape: [6, 6]
+base:
+  class_path: DiagonalGaussianAction
+  init_args:
+    lattice_shape: ${lattice_shape}
+

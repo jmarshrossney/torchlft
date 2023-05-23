@@ -1,13 +1,10 @@
-from __future__ import annotations
-
 import itertools
 import math
 from typing import TYPE_CHECKING
 
 import torch
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Tensor, BoolTensor, Iterator
 
 
 def assert_valid_partitioning(*masks: BoolTensor) -> None:
@@ -52,7 +49,7 @@ def make_checkerboard_partitions(
     return [checker, ~checker]
 
 
-def alternating_checkerboard_mask(lattice_shape: list[int]) -> itertools.cycle:
+def alternating_checkerboard_mask(lattice_shape: list[int]) -> Iterator:
     """
     Infinite iterator which alternates between even and odd sites of the mask.
     """

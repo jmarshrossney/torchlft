@@ -17,7 +17,7 @@ from torchlft.actions import (
     phi_four_action,
     phi_four_action_local,
 )
-from torchlft.sample import SamplingAlgorithm
+from torchlft.sample import SamplingAlgorithm, metropolis_test
 from torchlft.utils.lattice import build_neighbour_list
 
 

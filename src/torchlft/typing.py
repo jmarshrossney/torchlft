@@ -1,46 +1,83 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from typing import (
     Any,
     Callable,
-    Optional,
     Protocol,
-    runtime_checkable,
+    Optional,
     TypeAlias,
-    TYPE_CHECKING,
+    runtime_checkable,
     Union,
 )
 
-import torch
-from torch import Tensor, BoolTensor, LongTensor, Size
-from torch.nn import Module
+from torch import Tensor, BoolTensor, LongTensor
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau
 
 __all__ = [
+    # Standard lib
     "Any",
     "Callable",
     "Iterable",
+    "Iterator",
     "Optional",
-    "TypeAlias",
-]
-
-__all__ += [
+    "Union",
+    # PyTorch
     "Tensor",
     "BoolTensor",
     "LongTensor",
-    "Size",
-    "Module",
+    "Optimizer",
+    # Custom types
+    "Scheduler",
+    # Protocols
+    "BaseAction",
+    "Geometry",
+    "Transform",
 ]
 
 # Custom types
 
+Scheduler: TypeAlias = Union[_LRScheduler, ReduceLROnPlateau]
 
-# probably not necessary - do i need isinstance??
+# Protocols
+
+
+class Action(Protocol):
+    def compute(self, inputs: Tensor | tuple[Tensor, ...]) -> Tensor:
+        ...
+
+    def gradient(
+        self, inputs: Tensor | tuple[Tensor, ...]
+    ) -> Tensor | tuple[Tensor, ...]:
+        ...
+
+
+# NOTE: Do I need to inherit from Protocol again here?
+class BaseAction(Action, Protocol):
+    def sample(self, n: int) -> Tensor | tuple[Tensor, ...]:
+        ...
+
+
 @runtime_checkable
+class Constraint(Protocol):
+    def check(self, inputs: Tensor) -> bool:
+        ...
+
+
+class Geometry(Protocol):
+    def partition(
+        self, inputs: Tensor | tuple[Tensor, ...]
+    ) -> tuple[Tensor, ...]:
+        ...
+
+    def restore(
+        self, partitions: tuple[Tensor, ...]
+    ) -> Tensor | tuple[Tensor, ...]:
+        ...
+
+
 class Transform(Protocol):
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         ...
 
     def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
         ...
-
-
-# Base density, action, hamiltonian?

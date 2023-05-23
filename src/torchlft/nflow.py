@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 import torch
 import torch.nn as nn
 
-Tensor = torch.Tensor
+from torchlft.typing import Action, BaseAction, Geometry, Tensor
+
+# TODO: Type alias for Tensor | tuple[Tesor, ...] etc etc
 
 
 class NormalizingFlow(nn.Module):
@@ -59,7 +59,7 @@ class BoltzmannGenerator(nn.Module):
     def __init__(
         self,
         base: BaseAction,
-        target: TargetAction,
+        target: Action,
         flow: NormalizingFlow | NormalizingFlowComposition,
     ):
         super().__init__()

@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import NamedTuple, TYPE_CHECKING
+from typing import NamedTuple
 from math import pi as π, prod, sin
 
 import torch
@@ -8,8 +6,7 @@ import torch.nn.functional as F
 
 from torchlft.utils.sphere import spherical_triangle_area
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Callable, Tensor
 
 
 class IntegratedAutocorrelation:
@@ -33,9 +30,7 @@ class IntegratedAutocorrelation:
     def autocorrelation(self) -> Tensor:
         return self._autocorrelation
 
-    def estimate_errors(
-        self, factor: float = 2.0
-    ) -> IntegratedAutocorrelation.Errors:
+    def estimate_errors(self, factor: float = 2.0) -> NamedTuple:
         # TODO: want option to inspect the process more thoroughly
         τ_int = self.autocorrelation.cumsum(dim=-1)
         λ = factor

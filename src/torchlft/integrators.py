@@ -1,14 +1,14 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
 import logging
+from math import isclose
 
 import torch
+import torch.linalg as LA
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Callable, Optional, Tensor, Hamiltonian
 
 log = logging.getLogger(__name__)
+
+# TODO: typing for Hamiltonian
 
 
 # TODO: adaptive step size (on_step_func callback)

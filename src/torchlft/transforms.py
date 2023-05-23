@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from math import pi as π
 import math
-from typing import TYPE_CHECKING
 
 import torch
 import torch.linalg as LA
@@ -17,8 +14,7 @@ from torchlft.utils.tensor import (
 )
 from torchlft.utils.linalg import dot
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Constraint, Tensor, BoolTensor
 
 DEBUG = False
 

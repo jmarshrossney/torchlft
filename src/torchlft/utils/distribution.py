@@ -1,8 +1,6 @@
 """
 A collection of utils for constructing objects based on distributions.
 """
-from __future__ import annotations
-
 from types import MethodType
 
 import torch
@@ -12,7 +10,7 @@ import pytorch_lightning as pl
 
 from torchlft.utils.tensor import sum_except_batch
 
-Tensor = torch.Tensor
+from torchlft.typing import Tensor
 
 
 def expand_iid(

@@ -3,27 +3,38 @@ The advantage of subclass torch.nn.Module and registering distribution parameter
 as buffers is that they can be moved to the correct device with Module.to(device).
 This is done under the hood by PyTorch Lightning.
 """
-from __future__ import annotations
 
-from abc import ABCMeta, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 from math import prod, pi as π
-from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 import torch.linalg as LA
 
+from torchlft.nflow import NormalizingFlow  # typing only
 from torchlft.utils.distribution import GaussianModule, DiagonalGaussianModule
 from torchlft.utils.tensor import sum_except_batch
 from torchlft.utils.lattice import laplacian_2d
 from torchlft.utils.linalg import mv
+from torchlft.typing import Tensor
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+
+class Phi4BaseAction(ABC):
+    @abstractmethod
+    def compute(self, ϕ: Tensor) -> Tensor:
+        ...
+
+    @abstractmethod
+    def gradient(self, ϕ: Tensor) -> Tensor:
+        ...
+
+    @abstractmethod
+    def sample(self, n: int) -> Tensor:
+        ...
 
 
 # Thermodynamic limit β->0
-class DiagonalGaussianAction(DiagonalGaussianModule):
+class DiagonalGaussianAction(DiagonalGaussianModule, Phi4BaseAction):
     def __init__(self, lattice_shape: tuple[int, ...]):
         super().__init__(shape=lattice_shape)
         self.lattice_shape = lattice_shape
@@ -39,7 +50,7 @@ class DiagonalGaussianAction(DiagonalGaussianModule):
 
 
 # Gaussian limit λ->0
-class GaussianAction(GaussianModule):
+class GaussianAction(GaussianModule, Phi4BaseAction):
     def __init__(self, lattice_shape: tuple[int, int], m_sq: float):
         if len(lattice_shape) != 2:
             # TODO: support other dims

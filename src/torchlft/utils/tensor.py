@@ -1,11 +1,8 @@
-from __future__ import annotations
-
 from math import pi as π
-from collections.abc import Iterable
 
 import torch
 
-Tensor = torch.Tensor
+from torchlft.typing import Tensor, Iterable
 
 
 def mod_2pi(x: Tensor) -> Tensor:
@@ -19,7 +16,7 @@ def expand_like_stack(x: Tensor, n: int) -> Tensor:
 
 def expand_elements(
     x: Tensor, target_shape: torch.Size, stack_dim: int = 0
-) -> torch.Tensor:
+) -> Tensor:
     """
     Expands and stacks each element of a one-dimensional tensor.
 
@@ -50,9 +47,7 @@ def expand_elements(
     )
 
 
-def stacked_nan_to_num(
-    x: torch.Tensor, y: torch.Tensor, dim: int
-) -> torch.Tensor:
+def stacked_nan_to_num(x: Tensor, y: Tensor, dim: int) -> Tensor:
     """
     Vector-wise replacement of NaNs.
 

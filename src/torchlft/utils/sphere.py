@@ -1,13 +1,8 @@
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
 import torch
 
 from torchlft.utils.linalg import dot, cross
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Tensor
 
 
 def spherical_triangle_area(a: Tensor, b: Tensor, c: Tensor) -> Tensor:

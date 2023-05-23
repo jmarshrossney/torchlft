@@ -1,17 +1,26 @@
-from __future__ import annotations
-
+from abc import ABCMeta, abstractmethod
+from functools import wraps
 import os
 import pathlib
-from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from types import MethodType
 
 import torch
 import torch.nn as nn
 import torch.utils.tensorboard as tensorboard
 import tqdm
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import (
+    Callable,
+    Iterator,
+    Optional,
+    Union,
+    Tensor,
+    BoolTensor,
+    LongTensor,
+    Hamiltonian,
+)
+
+# TODO: typing hamiltonian
 
 
 class SamplingAlgorithm(nn.Module, metaclass=ABCMeta):
@@ -282,4 +291,4 @@ class Sampler:
         if hasattr(self, "_logger"):
             self._logger.flush()
 
-        return configs
+        return output

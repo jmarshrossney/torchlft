@@ -1,13 +1,9 @@
-from __future__ import annotations
-
 from math import exp
 from random import random
-from typing import TYPE_CHECKING
 
 import torch
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Tensor, BoolTensor, LongTensor
 
 __all__ = [
     "metropolis_test",

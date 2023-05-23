@@ -1,15 +1,14 @@
-from __future__ import annotations
-
 from functools import partial
-from typing import NamedTuple, TYPE_CHECKING
+from typing import NamedTuple
 
 import torch
 import torch.nn as nn
 
 from torchlft.utils.tensor import sum_except_batch
 
-if TYPE_CHECKING:
-    from torchlft.typing import *
+from torchlft.typing import Tensor, Callable
+
+from torchlft.nflow import NormalizingFlow
 
 
 class InvalidCouplings(Exception):
@@ -26,21 +25,21 @@ class Phi4Couplings(NamedTuple):
     λ: float
 
     @classmethod
-    def particle_phys(cls, m_sq: float, λ: float) -> Phi4Couplings:
+    def particle_phys(cls, m_sq: float, λ: float):  # -> Phi4Couplings:
         r"""
         Standard Particle Physics parametrisation of Phi^4.
         """
         return cls(β=1, α=(4 + m_sq) / 2, λ=λ)
 
     @classmethod
-    def ising(cls, β: float, λ: float) -> Phi4Couplings:
+    def ising(cls, β: float, λ: float):  # -> Phi4Couplings:
         r"""
         Ising-like parametrisation of Phi^4.
         """
         return cls(β=β, α=1 - 2 * λ, λ=λ)
 
     @classmethod
-    def cond_mat(cls, κ: float, λ: float) -> Phi4Couplings:
+    def cond_mat(cls, κ: float, λ: float):  # -> Phi4Couplings:
         """
         Condensed matter parametrisation.
         """
@@ -59,7 +58,7 @@ _PARAMETRISATIONS = {
 }
 
 
-def _parse_couplings(couplings: dict[str, float]) -> Phi4Couplings:
+def parse_couplings(couplings: dict[str, float]) -> Phi4Couplings:
     try:
         parser = _PARAMETRISATIONS[tuple(couplings.keys())]
     except KeyError as exc:
@@ -71,14 +70,15 @@ def _parse_couplings(couplings: dict[str, float]) -> Phi4Couplings:
 
 class Phi4Action:
     def __init__(self, **couplings: dict[str, float]):
-        self._couplings = _parse_couplings(couplings)
+        self._couplings = couplings
+        self._parsed_couplings = parse_couplings(couplings)
 
     @property
-    def couplings(self) -> Phi4Couplings:
+    def couplings(self) -> dict[str, float]:
         return self._couplings
 
     def compute(self, ϕ: Tensor) -> Tensor:
-        β, α, λ = self.couplings
+        β, α, λ = self._parsed_couplings
 
         s = torch.zeros_like(ϕ)
 
@@ -97,7 +97,7 @@ class Phi4Action:
         return sum_except_batch(s)
 
     def gradient(self, ϕ: Tensor) -> Tensor:
-        β, α, λ = self.couplings
+        β, α, λ = self._parsed_couplings
 
         grad = torch.zeros_like(ϕ)
 
@@ -153,4 +153,4 @@ def _local_action(
 def get_local_action(
     phi: float, neighbours: list[float], **couplings: dict[str, float]
 ) -> Callable[[float, list[float]], float]:
-    return partial(_local_action, couplings=_parse_couplings(couplings))
+    return partial(_local_action, couplings=parse_couplings(couplings))

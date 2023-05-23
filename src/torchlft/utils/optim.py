@@ -1,12 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Optional, Union, TypeAlias
 
 import torch
 import torch.nn as nn
-from torch.optim import Optimizer
-from torch.optim.lr_scheduler import _LRScheduler, ReduceLROnPlateau
 
-Scheduler: TypeAlias = Union[_LRScheduler, ReduceLROnPlateau]
+from torchlft.typing import Optional, Optimizer, Scheduler
 
 
 def freeze(module: nn.Module) -> None:

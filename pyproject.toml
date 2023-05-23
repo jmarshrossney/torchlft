@@ -8,11 +8,15 @@ version = "0.1.0"
 description = "A PyTorch library for Machine Learning sampling approaches to Lattice Field Theories"
 authors = ["marshrossney <17361029+marshrossney@users.noreply.github.com>"]
 license = "GPLv3"
+packages = [
+    { include = "torchlft", from="src" },
+    { include = "torchlft_examples", from="src" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
 torch = "2.0"
-jsonargparse = "^4.21.1"
+omegaconf = "^2.3.0"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^7.3.1"
@@ -22,7 +26,8 @@ black = "^23.3.0"
 flake8 = "^6.0.0"
 ipython = "^8.13.2"
 
-[tool.poetry.group.lightning.dependencies]
+[tool.poetry.group.examples.dependencies]
+jsonargparse = "^4.21.1"
 pytorch-lightning = "2.0"
 
 [tool.pytest.ini_options]

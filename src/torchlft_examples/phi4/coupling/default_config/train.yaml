@@ -1,0 +1,22 @@
+lattice_shape: [6, 6]
+couplings:
+  m_sq: -4
+  lamda: 6
+layers:
+  - transform: affine
+    net: fnn
+    net_hidden_shape: [72]
+    net_bias: false
+    compose: 4
+
+steps: 1000
+
+output: "model"
+
+optimizer: Adam
+optimizer_init:
+  init_lr: 1e-3
+scheduler: CosineAnnealingLR
+scheduler_init:
+  T_max: ${steps}
+
