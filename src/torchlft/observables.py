@@ -83,6 +83,8 @@ class IntegratedAutocorrelation:
     def _compute_autocorrelation(observable: Tensor) -> Tensor:
         assert observable.dim() > 0
 
+        observable = observable - observable.mean(dim=0, keepdim=True)
+
         sample_size, *observable_shape = observable.shape
 
         # move sample dim to -1
@@ -122,7 +124,7 @@ class _Observables:
             )
 
         if not contains_replicas:
-            samples.unsqueeze_(dim=0)  # add dummy replica dimension
+            samples = samples.unsqueeze(dim=0)  # add dummy replica dimension
 
         n_replica, n_sample, lattice_L, lattice_T, *_ = samples.shape
 
@@ -156,7 +158,7 @@ class OnePointObservables(_Observables):
         return reversed(torch.std_mean(self._computed, dim=0, correction=1))
 
 
-class TwoPointObservables:
+class TwoPointObservables(_Observables):
     """
     Observables based on two point scalar correlation function.
     """
@@ -167,7 +169,7 @@ class TwoPointObservables:
 
     @property
     def zero_momentum_correlator(self) -> Tensor:
-        return self.correlator.sum(dim=1)
+        return self.correlator.mean(dim=1)
 
     @property
     def effective_pole_mass(self) -> Tensor:

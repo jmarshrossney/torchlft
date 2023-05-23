@@ -28,11 +28,14 @@ def mv(M: Tensor, v: Tensor) -> Tensor:
 def vm(v: Tensor, M: Tensor) -> Tensor:
     return torch.einsum("...i,...ij->...j", v, M)
 
+
 def mm(M: Tensor, N: Tensor) -> Tensor:
     return torch.einsum("...ij,...jk->...ik", M, N)
 
+
 def tr(M: Tensor) -> Tensor:
     return torch.einsum("...ii", M)
+
 
 def projector(x: Tensor) -> Tensor:
     return torch.eye(x.shape[-1], dtype=x.dtype, device=x.device) - outer(

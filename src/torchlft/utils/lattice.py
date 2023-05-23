@@ -105,7 +105,10 @@ def build_neighbour_list(
     )
     return neighbour_indices.tolist()
 
-def correlator_restore_geom(correlator_lexi: Tensor, lattice_shape: tuple[int, int]) -> Tensor:
+
+def correlator_restore_geom(
+    correlator_lexi: Tensor, lattice_shape: tuple[int, int]
+) -> Tensor:
     """
     Takes a volume average of 2-dimensional shifts
     For each lattice site (row), restores the geometry by representing

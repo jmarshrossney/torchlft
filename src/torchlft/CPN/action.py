@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import torch
 
-from torchlft.utils.linalg import dot, mv
+from torchlft.utils.linalg import dot, mv, orthogonal_projection
 from torchlft.utils.tensor import sum_except_batch
+
+Tensor = torch.Tensor
 
 
 def action_v1(z: Tensor, λ: Tensor, g: float) -> Tensor:
@@ -52,8 +54,7 @@ def action_v3(x: Tensor, A: Tensor, g: float) -> Tensor:
 
     s = torch.zeros_like(A).sum(dim=-1)
 
-    for μ, A_μ in zip((1, 2), A.split(1, -1)):
-        A_μ.unsqueeze_(-1)
+    for μ, A_μ in zip((1, 2), A.unsqueeze(-1).split(1, -2)):
         J_μ = torch.kron(
             torch.eye(N),
             A_μ.cos() * torch.eye(2)
@@ -75,6 +76,36 @@ def action_v3(x: Tensor, A: Tensor, g: float) -> Tensor:
         """
 
     return (1 / g) * sum_except_batch(s)
+
+
+def grad_action_v3(x: Tensor, A: Tensor, g: float) -> tuple[Tensor, Tensor]:
+    ds_x = torch.zeros_like(x)
+    N = x.shape[-1] // 2
+
+    ds_A = []
+
+    for μ, A_μ in zip((1, 2), A.unsqueeze(-1).split(1, -2)):
+        J_μ = torch.kron(
+            torch.eye(N),
+            A_μ.cos() * torch.eye(2)
+            + A_μ.sin() * torch.tensor([[0, -1], [1, 0]]),
+        )
+        assert J_μ.shape == (*x.shape, 2 * N)
+
+        first = mv(J_μ.transpose(-2, -1), x.roll(-1, μ))
+        second = mv(J_μ.roll(+1, μ), x.roll(+1, μ))
+        ds_x += -2 * (first + second)
+
+        grad_J_μ = torch.kron(
+            torch.eye(N),
+            -A_μ.sin() * torch.eye(2)
+            + A_μ.cos() * torch.tensor([[0, -1], [1, 0]]),
+        )
+        ds_A.append(-2 * dot(x, mv(grad_J_μ.transpose(-2, -1), x.roll(-1, μ))))
+
+    ds_A = torch.stack(ds_A, dim=-1)
+    ds_x = orthogonal_projection(ds_x, x)
+    return (1 / g) * ds_x, (1 / g) * ds_A
 
 
 def action_v4(z: Tensor, g: float) -> Tensor:

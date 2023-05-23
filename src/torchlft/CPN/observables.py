@@ -8,6 +8,8 @@ from torchlft.utils.lattice import correlator_restore_geom
 from torchlft.utils.linalg import outer, dot
 from torchlft.utils.tensor import mod_2pi, sum_except_batch
 
+Tensor = torch.Tensor
+
 
 def two_point_correlator(z: Tensor) -> Tensor:
     _, L, T, N = z.shape
@@ -68,19 +70,20 @@ def topological_charge_v2(z: Tensor) -> Tensor:
     θ1 = dot(z.conj(), z.roll(-1, 1)).angle()
     θ2 = dot(z.conj(), z.roll(-1, 2)).angle()
 
-    q = θ1 + θ2.roll(-1, 1) - θ1.roll(-1, 2) - θ2
+    # area = 2 * θ1 + θ2.roll(-1, 1) - θ1.roll(-1, 2) - θ2
+    # area = torch.fmod(area, 2 * π)
+    # q = area / (4 * π)
 
+    q = θ1 + θ2.roll(-1, 1) - θ1.roll(-1, 2) - θ2
     q = mod_2pi(q + π) - π  # -π < q < π
-    
+
     return sum_except_batch(q) / (2 * π)
+
 
 def topological_charge_v3(A: Tensor) -> Tensor:
     A1, A2 = A.split(1, dim=-1)
     q = A1 + A2.roll(-1, 1) - A1.roll(-1, 2) - A2
 
     q = mod_2pi(q + π) - π  # -π < q < π
-    
+
     return sum_except_batch(q) / (2 * π)
-
-
-

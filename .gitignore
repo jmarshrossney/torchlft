@@ -7,3 +7,5 @@ __pycache__/
 docs/_build
 docs/source/torchlft.*
 workbench
+*.png
+*.pt

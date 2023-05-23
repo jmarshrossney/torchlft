@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from abc import ABCMeta, abstractmethod
+from collections.abc import Iterator
+from functools import wraps
 import os
 import pathlib
-from collections.abc import Iterator
+from types import MethodType
 from typing import TYPE_CHECKING
 
 import torch
@@ -68,7 +71,7 @@ class SamplingAlgorithm(nn.Module, metaclass=ABCMeta):
         @wraps(init)
         def wrapper(self):
             self._global_step = 0
-            self._transitions = 0
+            self._transitions = torch.zeros(1)  # TODO
             self.state = None
             init()
 
@@ -171,13 +174,11 @@ class HybridMonteCarlo(SamplingAlgorithm):
             coords=x0,
             momenta=p0,
             hamiltonian=self.hamiltonian,
-            step_size=self.step_size,
-            traj_length=self.traj_length,
         )
 
         HT = self.hamiltonian.compute(xT, pT)
 
-        self._delta_hamiltonian = H0 - HT
+        self._delta_hamiltonian.append(H0 - HT)
 
         accepted = metropolis_test(current=-H0, proposal=-HT)
 

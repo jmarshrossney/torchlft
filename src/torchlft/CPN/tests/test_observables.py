@@ -5,7 +5,7 @@ from torchlft.CPN.observables import *
 from torchlft.utils.linalg import dot, outer, mm, tr
 
 
-L = 500
+L = 6
 B = 10
 N = 4
 
@@ -74,11 +74,11 @@ def test_topological_charge_geometric():
 
     Q = topological_charge_geometric(z)
 
-    print(charge)
+    print(Q)
     assert torch.allclose(Q, Q.round())
 
-def test_topological_charge_v2():
 
+def test_topological_charge_v2():
     x = torch.empty(B, L, L, 2 * N).normal_()
     x = x / LA.vector_norm(x, dim=-1, keepdim=True)
 
@@ -87,17 +87,16 @@ def test_topological_charge_v2():
 
     Q = topological_charge_v2(z)
 
-    print(charge)
+    print(Q)
     assert torch.allclose(Q, Q.round())
 
 
 def test_topological_charge_v3():
-
     A = torch.empty(B, L, L, 2).uniform_(0, 2 * π)
 
     Q = topological_charge_v3(A)
 
-    print(charge)
+    print(Q)
     assert torch.allclose(Q, Q.round())
 
 
