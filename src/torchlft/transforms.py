@@ -13,9 +13,9 @@ import torchlft.constraints as constraints
 from torchlft.utils.tensor import (
     sum_except_batch,
     mod_2pi,
-    dot,
     expand_like_stack,
 )
+from torchlft.utils.linalg import dot
 
 if TYPE_CHECKING:
     from torchlft.typing import *

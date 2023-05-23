@@ -20,8 +20,8 @@ import torch
 import torch.nn as nn
 
 from torchlft import constraints as constraints
-from torchlft.fields import CanonicalScalarField
 from torchlft.networks import make_fnn, make_cnn, Activation
+from torchlft.nflow import NormalizingFlow
 from torchlft.transforms import (
     Translation,
     Rescaling,
@@ -31,8 +31,6 @@ from torchlft.transforms import (
 from torchlft.utils.lattice import make_checkerboard
 
 from torchlft.typing import Transform
-
-from torchlft.theories.phi4.flow_base import NormalizingFlow
 
 if TYPE_CHECKING:
     from torchlft.typing import *

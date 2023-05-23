@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Optional, Union, TypeAlias
 
@@ -16,7 +14,7 @@ def freeze(module: nn.Module) -> None:
         param.requires_grad = False
 
 
-def unfreze(module: nn.Module) -> None:
+def unfreeze(module: nn.Module) -> None:
     for param in module.parameters():
         param.requires_grad = True
 

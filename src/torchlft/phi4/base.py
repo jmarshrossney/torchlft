@@ -10,10 +10,10 @@ from math import prod, pi as π
 from typing import TYPE_CHECKING
 
 import torch
+import torch.nn as nn
 import torch.linalg as LA
 
-from torchlft.abc import BaseAction
-from torchlft.utils.distribution import Gaussian, DiagonalGaussian
+from torchlft.utils.distribution import GaussianModule, DiagonalGaussianModule
 from torchlft.utils.tensor import sum_except_batch
 from torchlft.utils.lattice import laplacian_2d
 from torchlft.utils.linalg import mv
