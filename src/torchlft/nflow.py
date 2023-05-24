@@ -69,12 +69,12 @@ class BoltzmannGenerator(nn.Module):
 
     def forward(
         self, inputs: Tensor | tuple[Tensor, ...]
-    ) -> tuple[Tensor, Tensor] | tuple[tuple[Tensor, ...], Tensor]:
+    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
         return self.flow(inputs)
 
     def inverse(
         self, inputs: Tensor | tuple[Tensor, ...]
-    ) -> tuple[Tensor, Tensor] | tuple[tuple[Tensor, ...], Tensor]:
+    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
         return self.flow.inverse(inputs)
 
     def inference_step(
@@ -99,7 +99,6 @@ class BoltzmannGenerator(nn.Module):
         outputs, ldj_forward = self(inputs)
         model_action = base_action + ldj_forward
         target_action = self.target.compute(outputs)
-        # log_weights = model_action - target_action
         return dict(
             inputs=inputs,
             output=outputs,
@@ -107,13 +106,6 @@ class BoltzmannGenerator(nn.Module):
             model_action=model_action,
             target_action=target_action,
         )
-
-    def training_step_reverse_kl(self, N: int) -> Tensor:
-        configs = self.base.sample(N)
-        outputs = self.sampling_step(configs)
-        log_weights = outputs["model_action"] - outputs["target_action"]
-        kl_divergence = (-log_weights).mean(dim=0, keepdim=True)
-        return kl_divergence
 
     def sample(self, N: int) -> tuple[Tensor | tuple[Tensor, Tensor], Tensor]:
         configs = self.base.sample(N)

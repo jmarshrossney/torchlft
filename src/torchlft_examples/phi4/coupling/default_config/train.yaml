@@ -1,22 +1,29 @@
 lattice_shape: [6, 6]
-couplings:
-  m_sq: -4
-  lamda: 6
+base:
+  class_path: DiagonalGaussianAction
+  init_args:
+    lattice_shape: ${lattice_shape}
+target:
+  β: 0.01
+  λ: 0
+
 layers:
   - transform: affine
     net: fnn
     net_hidden_shape: [72]
     net_bias: false
-    compose: 4
+    compose: 1
 
 steps: 1000
+batch_size: 1000
 
-output: "model"
+output: model
 
-optimizer: Adam
-optimizer_init:
-  init_lr: 1e-3
-scheduler: CosineAnnealingLR
-scheduler_init:
-  T_max: ${steps}
+optim:
+  optimizer: Adam
+  optimizer_init:
+    lr: 1e-3
+  scheduler: CosineAnnealingLR
+  scheduler_init:
+    T_max: ${steps}
 

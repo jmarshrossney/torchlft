@@ -1,20 +1,10 @@
-# from __future__ import annotations
-
 from abc import ABCMeta, abstractmethod
 from dataclasses import asdict, dataclass
 from enum import Enum
 from functools import partial
 from itertools import chain
 import math
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Optional,
-    TypeAlias,
-    TYPE_CHECKING,
-    Union,
-)
+from typing import ClassVar, TypeAlias
 
 import torch
 import torch.nn as nn
@@ -29,13 +19,8 @@ from torchlft.transforms import (
     RQSplineTransform,
 )
 from torchlft.utils.lattice import make_checkerboard
+from torchlft.typing import Any, Callable, Optional, Union, Tensor, Transform
 
-from torchlft.typing import Transform
-
-if TYPE_CHECKING:
-    from torchlft.typing import *
-
-Tensor: TypeAlias = torch.Tensor
 NetFactory: TypeAlias = Callable[[int, int], Callable[Tensor, Tensor]]
 
 

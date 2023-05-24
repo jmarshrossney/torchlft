@@ -31,6 +31,7 @@ class SamplingAlgorithm(nn.Module, metaclass=ABCMeta):
         # Initialise empty buffer for state, transitions
         # NOTE: possibly better to force cloning of state?
         # TODO: figure out approach for states that are tuples of tensors
+
         self.register_buffer("state", None)
         self.register_buffer("_transitions", None)
 
