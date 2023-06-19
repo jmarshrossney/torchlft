@@ -26,7 +26,6 @@ DEBUG = False
 class Translation:
     domain: Constraint = constraints.real
     arg_constraints: dict[str, Constraint] = {"shift": constraints.real}
-    pointwise: bool = True
     n_params: int = 1
 
     def __init__(self, shift: Tensor) -> None:
@@ -90,6 +89,116 @@ class AffineTransform:
         s, t = self.log_scale.expand_as(y), self.shift.expand_as(y)
         x = (y - t) * torch.exp(-s)
         ldj = sum_except_batch(self.log_scale).negative()
+        return x, ldj
+
+
+class _RQSplineTransform:
+    def __init__(
+            self,
+            knots_x: Tensor,
+            knots_y: Tensor,
+            knots_dydx: Tensor,
+    ):
+        self.knots_x = knots_x
+        self.knots_y = knots_y
+        self.knots_dydx = knots_dydx
+
+    def _get_segment(
+        self, inputs: Tensor, inverse: bool
+    ) -> tuple[
+        Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, BoolTensor
+    ]:
+        outside_bounds_mask = (inputs < self._lower_bound) | (
+            inputs > self._upper_bound
+        )
+        self.handle_inputs_outside_bounds(inputs, outside_bounds_mask)
+
+        knots = self.knots_y if inverse else self.knots_x
+
+        i0 = (torch.searchsorted(knots, inputs.unsqueeze(-1)) - 1).clamp_(
+            0, self._n_segments - 1
+        )
+        i0_i1 = torch.stack((i0, i0 + 1), dim=0)
+
+        x0_x1 = (
+            expand_like_stack(self.knots_x, 2).gather(-1, i0_i1).squeeze(-1)
+        )
+        y0_y1 = (
+            expand_like_stack(self.knots_y, 2).gather(-1, i0_i1).squeeze(-1)
+        )
+        d0_d1 = (
+            expand_like_stack(self.knots_dydx, 2).gather(-1, i0_i1).squeeze(-1)
+        )
+
+        # NOTE: Cannot do x0, x1 = x0_x1 with torchscript :(
+        x0, x1 = x0_x1[0], x0_x1[1]
+        y0, y1 = y0_y1[0], y0_y1[1]
+        d0, d1 = d0_d1[0], d0_d1[1]
+
+        s = (y1 - y0) / (x1 - x0)
+
+        return x0, x1, y0, y1, d0, d1, s, outside_bounds_mask
+
+    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
+        # assert list(x.shape) == self.knots_x.shape[:-1]
+
+        x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(
+            x, inverse=False
+        )
+
+        θx = (x - x0) / (x1 - x0)
+
+        denominator = s + (d1 + d0 - 2 * s) * θx * (1 - θx)
+
+        θy = (s * θx**2 + d0 * θx * (1 - θx)) / denominator
+
+        y = y0 + (y1 - y0) * θy
+
+        dydx = (
+            s**2
+            * (d1 * θx**2 + 2 * s * θx * (1 - θx) + d0 * (1 - θx) ** 2)
+            / denominator**2
+        )
+        # assert torch.all(dydx > 0)
+
+        y[outside_bounds_mask] = x[outside_bounds_mask]
+        # NOTE: this shouldn't be necessary! Should be 1 by construction
+        dydx[outside_bounds_mask] = 1
+
+        ldj = sum_except_batch(dydx.log())
+
+        return y, ldj
+
+    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
+        # assert list(y.shape) == self.knots_y.shape[:-1]
+
+        x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(
+            y, inverse=True
+        )
+
+        θy = (y - y0) / (y1 - y0)
+
+        b = d0 - (d1 + d0 - 2 * s) * θy
+        a = s - b
+        c = -s * θy
+
+        θx = (-2 * c) / (b + (b**2 - 4 * a * c).sqrt())
+
+        x = x0 + (x1 - x0) * θx
+
+        denominator = s + (d1 + d0 - 2 * s) * θx * (1 - θx)
+
+        dydx = (
+            s**2
+            * (d1 * θx**2 + 2 * s * θx * (1 - θx) + d0 * (1 - θx) ** 2)
+            / denominator**2
+        )
+
+        x[outside_bounds_mask] = y[outside_bounds_mask]
+        dydx[outside_bounds_mask] = 1
+
+        ldj = sum_except_batch(dydx.log()).negative()
+
         return x, ldj
 
 
@@ -234,6 +343,76 @@ class RQSplineTransform:
     #        else constraints.real
     #    )
 
+    def __call__(self, widths: Tensor, heights: Tensor, derivs: Tensor) -> Callable[Tensor, [Tensor, Tensor]]:
+        assert widths.shape == heights.shape
+
+        # Normalise the widths and heights to the interval
+        widths = F.softmax(widths, dim=-1) * (self.upper_bound - self.lower_bound)
+        heights = F.softmax(heights, dim=-1) * (self.upper_bound - self.lower_bound)
+
+        # Ensure the derivatives are positive and > min_slope
+        derivs = F.softplus(derivs) + self.min_slope
+
+        """
+        if DEBUG:
+            constraint = constraints.positive + constraints.SumToValue(
+                upper_bound - lower_bound, dim=-1
+            )
+            constraint.check(widths)
+            constraint.check(heights)
+            constraints.positive.check(derivs)
+        """
+
+        # Apply boundary conditions to the derivatives
+        if not self.bounded:
+            # match derivs with identity transform outside bounds
+            derivs = F.pad(derivs, (1, 1), "constant", 1.0)
+        elif self.periodic:
+            # match derivs at 0 and 2pi
+            derivs = F.pad(
+                derivs.flatten(1, -2), (0, 1), "circular"
+            ).unflatten(1, derivs.shape[1:-1])
+        else:
+            # bounded and not periodic: no additional constraints
+            derivs = derivs
+
+        assert derivs.shape[-1] == widths.shape[-1] + 1
+
+        zeros = torch.zeros(
+            size=widths.shape[:-1],
+            device=widths.device,
+            dtype=widths.dtype,
+        ).unsqueeze(-1)
+
+        # Build the spline
+        knots_x = torch.cat(
+            (
+                zeros,
+                torch.cumsum(widths, dim=-1),
+            ),
+            dim=-1,
+        ).add(lower_bound)
+        knots_y = torch.cat(
+            (
+                zeros,
+                torch.cumsum(heights, dim=-1),
+            ),
+            dim=-1,
+        ).add(lower_bound)
+
+        return _RationalQuadraticSpline(knots_x, knots_y, knots_dydx)
+
+        # We only need these three tensors to compute the transformation
+        self.knots_x = knots_x
+        self.knots_y = knots_y
+        self.knots_dydx = derivs
+
+        self._n_segments = widths.shape[-1]
+        self._lower_bound = lower_bound
+        self._upper_bound = upper_bound
+        self._bounded = bounded
+        self._periodic = periodic
+
     def handle_inputs_outside_bounds(
         self, inputs: Tensor, outside_bounds_mask: BoolTensor
     ) -> None:
@@ -261,103 +440,6 @@ class RQSplineTransform:
         else:
             pass  # TODO: log.info
 
-    def _get_segment(
-        self, inputs: Tensor, inverse: bool
-    ) -> tuple[
-        Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, BoolTensor
-    ]:
-        outside_bounds_mask = (inputs < self._lower_bound) | (
-            inputs > self._upper_bound
-        )
-        self.handle_inputs_outside_bounds(inputs, outside_bounds_mask)
-
-        knots = self.knots_y if inverse else self.knots_x
-
-        i0 = (torch.searchsorted(knots, inputs.unsqueeze(-1)) - 1).clamp_(
-            0, self._n_segments - 1
-        )
-        i0_i1 = torch.stack((i0, i0 + 1), dim=0)
-
-        x0_x1 = (
-            expand_like_stack(self.knots_x, 2).gather(-1, i0_i1).squeeze(-1)
-        )
-        y0_y1 = (
-            expand_like_stack(self.knots_y, 2).gather(-1, i0_i1).squeeze(-1)
-        )
-        d0_d1 = (
-            expand_like_stack(self.knots_dydx, 2).gather(-1, i0_i1).squeeze(-1)
-        )
-
-        # NOTE: Cannot do x0, x1 = x0_x1 with torchscript :(
-        x0, x1 = x0_x1[0], x0_x1[1]
-        y0, y1 = y0_y1[0], y0_y1[1]
-        d0, d1 = d0_d1[0], d0_d1[1]
-
-        s = (y1 - y0) / (x1 - x0)
-
-        return x0, x1, y0, y1, d0, d1, s, outside_bounds_mask
-
-    def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        # assert list(x.shape) == self.knots_x.shape[:-1]
-
-        x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(
-            x, inverse=False
-        )
-
-        θx = (x - x0) / (x1 - x0)
-
-        denominator = s + (d1 + d0 - 2 * s) * θx * (1 - θx)
-
-        θy = (s * θx**2 + d0 * θx * (1 - θx)) / denominator
-
-        y = y0 + (y1 - y0) * θy
-
-        dydx = (
-            s**2
-            * (d1 * θx**2 + 2 * s * θx * (1 - θx) + d0 * (1 - θx) ** 2)
-            / denominator**2
-        )
-        # assert torch.all(dydx > 0)
-
-        y[outside_bounds_mask] = x[outside_bounds_mask]
-        # NOTE: this shouldn't be necessary! Should be 1 by construction
-        dydx[outside_bounds_mask] = 1
-
-        ldj = sum_except_batch(dydx.log())
-
-        return y, ldj
-
-    def inverse(self, y: Tensor) -> tuple[Tensor, Tensor]:
-        # assert list(y.shape) == self.knots_y.shape[:-1]
-
-        x0, x1, y0, y1, d0, d1, s, outside_bounds_mask = self._get_segment(
-            y, inverse=True
-        )
-
-        θy = (y - y0) / (y1 - y0)
-
-        b = d0 - (d1 + d0 - 2 * s) * θy
-        a = s - b
-        c = -s * θy
-
-        θx = (-2 * c) / (b + (b**2 - 4 * a * c).sqrt())
-
-        x = x0 + (x1 - x0) * θx
-
-        denominator = s + (d1 + d0 - 2 * s) * θx * (1 - θx)
-
-        dydx = (
-            s**2
-            * (d1 * θx**2 + 2 * s * θx * (1 - θx) + d0 * (1 - θx) ** 2)
-            / denominator**2
-        )
-
-        x[outside_bounds_mask] = y[outside_bounds_mask]
-        dydx[outside_bounds_mask] = 1
-
-        ldj = sum_except_batch(dydx.log()).negative()
-
-        return x, ldj
 
 
 class CircularSplineTransform(RQSplineTransform):

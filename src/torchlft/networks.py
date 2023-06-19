@@ -1,13 +1,15 @@
-from enum import Enum
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from itertools import chain
-from typing import Union
+from typing import Any, Optional, Union
 
-from jsonargparse.typing import PositiveInt, restricted_number_type
 import torch
 import torch.nn as nn
 
+from torchlft.utils import StrEnum
 
-class Activation(Enum):
+
+class Activation(StrEnum):
     Identity = 0
     ELU = 1
     Hardshrink = 2
@@ -35,77 +37,85 @@ class Activation(Enum):
     GLU = 24
 
 
-def make_fnn(
-    size_in: int,
-    size_out: int,
-    *,
-    hidden_shape: list[int],
-    activation: Activation | str,
-    final_activation: Activation | str | None,
-    bias: bool,
-) -> nn.Sequential:
-    activation = getattr(
-        nn,
-        activation.name if isinstance(activation, Activation) else activation,
-    )
-    final_activation = (
-        getattr(
-            nn,
-            final_activation.name
-            if isinstance(final_activation, Activation)
-            else final_activation,
+class NetFactory(ABC):
+    @abstractmethod
+    def __call__(self, size_in: int, size_out: int, **context: dict[str, Any]) -> nn.Sequential:
+        ...
+
+@dataclass(kw_only=True)
+class FnnFactory(NetFactory):
+    hidden_shape: list[int, ...]
+    activation: Activation
+    bias: bool
+    final_activation: Optional[Activation] = None
+
+    def __post_init__(self) -> None:
+        self.activation = getattr(nn, str(self.activation))
+        self.final_activation = (
+            getattr(nn, str(self.final_activation))
+            if self.final_activation is not None
+            else nn.Identity
         )
-        if final_activation is not None
-        else nn.Identity
-    )
-    layers = [
-        nn.Linear(f_in, f_out, bias=bias)
-        for f_in, f_out in zip(
-            [size_in, *hidden_shape], [*hidden_shape, size_out]
-        )
-    ]
-    activations = [activation() for _ in hidden_shape] + [final_activation()]
-    return nn.Sequential(*list(chain(*zip(layers, activations))))
+
+    def __call__(self, size_in: int, size_out: int) -> nn.Sequential:
+        layers = [
+            nn.Linear(f_in, f_out, bias=bias)
+            for f_in, f_out in zip(
+                [size_in, *self.hidden_shape], [*self.hidden_shape, size_out]
+            )
+        ]
+        activations = [self.activation() for _ in self.hidden_shape] + [
+            self.final_activation()
+        ]
+        return nn.Sequential(*list(chain(*zip(layers, activations))))
 
 
-def make_cnn(
-    channels_in: int,
-    channels_out: int,
-    *,
-    dim: int,
-    hidden_shape: list[int],
-    kernel_size: int,
-    activation: Activation,
-    final_activation: Activation | None,
-    circular: bool,
-    **kwargs,
-) -> nn.Sequential:
-    Conv = {
-        1: nn.Conv1d,
-        2: nn.Conv2d,
-        3: nn.Conv3d,
-    }.__getitem__(dim)
-    if circular:
-        kwargs.update(padding=kernel_size // 2, padding_mode="circular")
-    layers = [
-        Conv(c_in, c_out, kernel_size, **kwargs)
-        for c_in, c_out in zip(
-            [channels_in, *hidden_shape], [*hidden_shape, channels_out]
+@dataclass(kw_only=True)
+class CnnFactory(NetFactory):
+    hidden_shape: list[int, ...]
+    activation: Activation
+    bias: bool
+    kernel_radius: int
+    final_activation: Optional[Activation] = None
+    conv_kwargs: Optional[dict[str, Any]] = None
+
+    def __post_init__(self) -> None:
+        self.activation = getattr(nn, str(self.activation))
+        self.final_activation = (
+            getattr(nn, str(self.final_activation))
+            if self.final_activation is not None
+            else nn.Identity
         )
-    ]
-    activation = getattr(
-        nn,
-        activation.name if isinstance(activation, Activation) else activation,
-    )
-    final_activation = (
-        getattr(
-            nn,
-            final_activation.name
-            if isinstance(final_activation, Activation)
-            else final_activation,
-        )
-        if final_activation is not None
-        else nn.Identity
-    )
-    activations = [activation() for _ in hidden_shape] + [final_activation()]
-    return nn.Sequential(*list(chain(*zip(layers, activations))))
+
+    def __call__(self, size_in: int, size_out: int) -> nn.Sequential:
+        kernel_size = self.kernel_radius * 2 + 1
+        kwargs = conv_kwargs | {
+            "padding": kernel_size // 2,
+            "padding_mode": "circular",
+        }
+        layers = [
+            nn.Conv2d(c_in, c_out, kernel_size, **kwargs)
+            for c_in, c_out in zip(
+                [channels_in, *self.hidden_shape],
+                [*self.hidden_shape, channels_out],
+            )
+        ]
+        activations = [self.activation() for _ in self.hidden_shape] + [
+            self.final_activation()
+        ]
+        return nn.Sequential(*list(chain(*zip(layers, activations))))
+
+
+IMPLEMENTED_NETWORKS = {
+    "fnn": FnnFactory,
+    "cnn": CnnFactory,
+}
+
+
+class NetChoices(StrEnum):
+    fnn = 0
+    cnn = 1
+
+
+def get_net_factory(choice: NetChoices):
+    return IMPLEMENTED_NETWORKS[str(choice)]

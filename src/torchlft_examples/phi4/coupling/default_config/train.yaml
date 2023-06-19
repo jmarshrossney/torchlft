@@ -4,17 +4,22 @@ base:
   init_args:
     lattice_shape: ${lattice_shape}
 target:
-  β: 0.01
+  m_sq: 0.66
   λ: 0
 
 layers:
-  - transform: affine
+  - transform: spline
+    transform_kwargs:
+      n_segments: 4
+      upper_bound: 5
     net: fnn
-    net_hidden_shape: [72]
-    net_bias: false
+    net_hidden_shape: [36]
+    net_activation: Tanh
+    net_final_activation: Tanh
+    net_bias: true
     compose: 1
 
-steps: 1000
+steps: 2000
 batch_size: 1000
 
 output: model
@@ -26,4 +31,6 @@ optim:
   scheduler: CosineAnnealingLR
   scheduler_init:
     T_max: ${steps}
+      #scheduler_extra_config:
+      #interval: step
 

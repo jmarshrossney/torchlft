@@ -116,6 +116,17 @@ class DiagonalGaussianModule(DistributionModule):
         )
 
 
+class GaussianAction:
+    def __init__(self, lattice_shape: tuple[int, int], m_sq: float):
+        ...
+
+    def to(self, device: torch.device):
+        self._distribution.loc = self._distribution.loc.to(device)
+        self._distribution._unbroadcasted_scale_tril = (
+            self._distribution._unbroadcasted_scale_tril.to(device)
+        )
+
+
 class GaussianModule(DistributionModule):
     def __init__(
         self,

@@ -93,9 +93,9 @@ class BoltzmannGenerator(nn.Module):
         )
 
     def sampling_step(
-        self, inputs: Tensor | tuple[Tensor, ...]
+        self, inputs_and_action: tuple[Tensor | tuple[Tensor, ...], Tensor]
     ) -> dict[str, Tensor | tuple[Tensor, ...]]:
-        base_action = self.base.compute(inputs)
+        inputs, base_action = inputs_and_action
         outputs, ldj_forward = self(inputs)
         model_action = base_action + ldj_forward
         target_action = self.target.compute(outputs)
@@ -108,5 +108,6 @@ class BoltzmannGenerator(nn.Module):
         )
 
     def sample(self, N: int) -> tuple[Tensor | tuple[Tensor, Tensor], Tensor]:
-        configs = self.base.sample(N)
-        return self.sampling_step(configs)
+        inputs = self.base.sample(N)
+        base_action = self.base.compute(inputs)
+        return self.sampling_step((inputs, base_action))

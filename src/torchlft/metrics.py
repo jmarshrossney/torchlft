@@ -7,15 +7,13 @@ from torchlft.typing import Tensor, BoolTensor, LongTensor
 
 __all__ = [
     "metropolis_test",
-    "shifted_kl_divergence",
-    "effective_sample_size",
-    "acceptance_rate",
-    "rejection_histogram",
-    "integrated_autocorrelation",
+    "LogWeightMetrics",
 ]
 
 
-def metropolis_test(log_weights: Tensor) -> tuple[LongTensor, BoolTensor]:
+def metropolis_test(
+    log_weights: Tensor,
+) -> tuple[LongTensor, BoolTensor, LongTensor]:
     r"""
     Subjects a set of log-weights to the Metropolis test.
 
@@ -48,6 +46,9 @@ def metropolis_test(log_weights: Tensor) -> tuple[LongTensor, BoolTensor]:
     indices = []
     history = []
 
+    rejection_histogram = [0 for _ in range(len(log_weights) - 1)]
+    rejection_counter = 0
+
     for proposal in log_weights:
         # Deal with this case separately to avoid overflow
         if (proposal > current) or (
@@ -56,34 +57,81 @@ def metropolis_test(log_weights: Tensor) -> tuple[LongTensor, BoolTensor]:
             current = proposal
             idx += 1
             history.append(True)
+
+            for i, j in enumerate(range(rejection_counter, 0, -1)):
+                rejection_histogram[i] += j
+
+            rejection_counter = 0
         else:
             history.append(False)
+            rejection_counter += 1
 
         indices.append(idx)
 
     indices = torch.tensor(indices, dtype=torch.long)
     history = torch.tensor(history, dtype=torch.bool)
+    rejection_histogram = torch.tensor(rejection_histogram, dtype=torch.long)
 
-    return indices, history
-
-
-def shifted_kl_divergence(log_weights: Tensor) -> Tensor:
-    return log_weights.mean(dim=-1).negative()
+    return indices, history, rejection_histogram
 
 
-def effective_sample_size(log_weights: Tensor) -> Tensor:
-    *_, N = log_weights.shape
-    Neff = torch.exp(
-        2 * torch.logsumexp(log_weights, dim=-1)
-        - torch.logsumexp(2 * log_weights, dim=-1)
-    )
-    return Neff / N
+class LogWeightMetrics:
+    def __init__(self, log_weights: Tensor) -> Tensor:
+        assert log_weights.dim() == 1
+        self.log_weights = log_weights
+        self.indices, self.history, self.rejection_histogram = metropolis_test(
+            log_weights
+        )
+
+    @property
+    def mean_log_weight(self) -> Tensor:
+        return self.log_weights.mean()
+
+    @property
+    def variance_log_weight(self) -> Tensor:
+        return self.log_weights.var()
+
+    @property
+    def effective_sample_size(self) -> Tensor:
+        N = len(self.log_weights)
+        Neff = torch.exp(
+            2 * torch.logsumexp(self.log_weights, dim=0)
+            - torch.logsumexp(2 * self.log_weights, dim=0)
+        )
+        return Neff / N
+
+    @property
+    def acceptance_rate(self) -> Tensor:
+        return self.history.float().mean()
+
+    @property
+    def integrated_autocorrelation(self) -> Tensor:
+        chain_length = len(self.history)
+
+        autocorrelation = self.rejection_histogram / torch.arange(
+            chain_length, 0, -1
+        )
+
+        integrated = autocorrelation.sum() + (1 / 2)
+
+        return integrated
+
+    @property
+    def most_consecutive_rejections(self) -> Tensor:
+        return self.rejection_histogram.nonzero().max().float()
+
+    def asdict(self) -> dict[str, Tensor]:
+        return {
+            "mean_log_weight": self.mean_log_weight,
+            "variance_log_weight": self.variance_log_weight,
+            "effective_sample_size": self.effective_sample_size,
+            "acceptance_rate": self.acceptance_rate,
+            "integrated_autocorrelation": self.integrated_autocorrelation,
+            "most_consecutive_rejections": self.most_consecutive_rejections,
+        }
 
 
-def acceptance_rate(history: Tensor) -> Tensor:
-    return history.float().mean(dim=-1)
-
-
+"""
 def rejection_histogram(history: BoolTensor) -> LongTensor:
     # Input: True = acceptance, False = rejection
     # 1 = rejection, 0 = acceptance
@@ -106,19 +154,4 @@ def rejection_histogram(history: BoolTensor) -> LongTensor:
         histogram += (step_counter <= this_rejection_run).long()
 
     return histogram
-
-
-def integrated_autocorrelation(history: BoolTensor) -> Tensor:
-    # constraints.bool.check(history)  # meh
-
-    histogram = rejection_histogram(history)
-
-    # Normalise histogram to make it a probability mass function
-    # Normalisation = count we would have if all rejected
-    *_, length = history.shape
-
-    autocorrelation = histogram / torch.arange(length, 0, -1)
-
-    integrated = autocorrelation.sum(dim=-1) + (1 / 2)
-
-    return integrated
+"""
