@@ -1,0 +1,15 @@
+model:
+  target:
+    lattice: [6, 6]
+    m_sq: 4.
+
+  flow:
+    point_net_shape: [10]
+    point_net_activation: tanh
+    spatial_net_shape: [3]
+    spatial_net_activation: identity
+    spatial_net_kernel: 1
+
+train:
+  n_steps: 1000
+  batch_size: 1000
