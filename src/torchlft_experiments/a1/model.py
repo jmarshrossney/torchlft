@@ -5,15 +5,15 @@ import torch
 import torch.nn as nn
 from jsonargparse.typing import PositiveInt, PositiveFloat, NonNegativeFloat
 
-from torchlft.model import Model as BaseModel
-from torchlft.scalar.actions import FreeScalarAction
-from torchlft.utils.lattice import checkerboard_mask
+from torchlft.nflow.model import Model as BaseModel
+from torchlft.nflow.nn import Activation, ConvNet2d, PointNet
+from torchlft.nflow.partition import Checkerboard2d
+from torchlft.nflow.transforms.core import UnivariateTransformModule
+from torchlft.nflow.transforms.affine import affine_transform
+from torchlft.nflow.transforms.wrappers import sum_log_gradient
+from torchlft.nflow.utils import Composition
 
-from torchlft.transforms.core import UnivariateTransformModule
-from torchlft.transforms.affine import affine_transform
-from torchlft.transforms.wrappers import sum_log_gradient
-from torchlft.lattice import Checkerboard2d, Lattice2d
-from torchlft.nn import Activation, ConvNet2d, PointNet
+from torchlft.scalar.actions import FreeScalarAction
 
 Tensor: TypeAlias = torch.Tensor
 
@@ -32,98 +32,73 @@ class Target:
         return FreeScalarAction(m_sq=self.m_sq)
 
 
-class _CouplingLayer(nn.Module):
+class CouplingLayer(nn.Module):
     def __init__(
         self,
         transform: UnivariateTransformModule,
-        net: nn.Module,
-        lattice: Lattice2d,
-        partition_id: int,
+        spatial_net: nn.Module,
+        layer_id: int,
     ):
         super().__init__()
 
         self.register_module("transform", transform)
-        self.register_module("net", net)
-        self.register_module("lattice", lattice)
+        self.register_module("spatial_net", spatial_net)
 
-        self.partition_id = partition_id
+        partitioning = Checkerboard2d(partition_id=layer_id)
+        self.register_module("partitioning", partitioning)
 
-        # self.register_buffer("active_mask", None, persistent=False)
-        # self.register_buffer("frozen_mask", None, persistent=False)
-
-        # self._generate_masks_hook = self.register_forward_pre_hook(
-        #    self.generate_masks
-        # )
-
-    """@staticmethod
-    def generate_masks(self, inputs: Tensor):
-        (φ,) = inputs
-        _, *lattice, _ = φ.shape
-
-        if self.active_mask is not None and self.active_mask.shape == lattice:
-            return
-
-        active_mask = checkerboard_mask(lattice, offset=self.offset, device=φ.device)
-        frozen_mask = ~active_mask
-
-        self.active_mask = active_mask
-        self.frozen_mask = frozen_mask
-    """
-
-    def forward(self, φ: Tensor) -> tuple[Tensor, Tensor]:
-
-        self.lattice.update_dims(*φ.shape[1:-1])
-        active_mask, frozen_mask = self.lattice(self.partition_id)
+    def forward(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
+        # Get active and frozen masks
+        _, L, T, _ = φ_in.shape
+        active_mask, frozen_mask = self.partitioning(dimensions=(L, T))
 
         # Construct conditional transformation
-        net_inputs = frozen_mask.unsqueeze(-1) * φ
-        context = self.net(net_inputs)
-        context = context[:, active_mask]
+        net_inputs = frozen_mask.unsqueeze(-1) * φ_in
+        context = self.spatial_net(net_inputs)[:, active_mask]
         transform = self.transform(context)
 
-        φ_out = φ.clone()
-
-        φ_out[:, active_mask], ldj = transform(φ[:, active_mask])
+        # Transform active variables
+        φ_out = φ_in.clone()
+        φ_out[:, active_mask], ldj = transform(φ_in[:, active_mask])
 
         return φ_out, ldj
 
 
-@dataclass
-class Flow:
-    point_net_shape: list[int]
-    point_net_activation: Activation
-    spatial_net_shape: list[int]
-    spatial_net_activation: Activation
-    spatial_net_kernel: int
+@dataclass(kw_only=True)
+class AffineTransformModuleDenseNet:
+    net: PointNet
+    scale_fn: str = "exponential"
+    symmetric: bool = False
+    shift_only: bool = False
+    rescale_only: bool = False
 
     def build(self):
         transform_cls = affine_transform()
-
-        # Fnn applied to each point
-        point_net = PointNet(
-            channels=self.point_net_shape,
-            activation=self.point_net_activation,
-        )
-
-        point_net = point_net.build()
-
-        point_net.append(nn.LazyLinear(transform_cls.n_params))
-
+        net = self.net.build()
+        net.append(nn.LazyLinear(transform_cls.n_params))
         transform = UnivariateTransformModule(
-            transform_cls, point_net, wrappers=[sum_log_gradient]
-        )  # wrappers
-
-        spatial_net = ConvNet2d(
-            channels=self.spatial_net_shape,
-            activation=self.spatial_net_activation,
-            kernel_radius=self.spatial_net_kernel,
+            transform_cls, net, wrappers=[sum_log_gradient]
         )
+        return transform
 
-        spatial_net = spatial_net.build()
 
-        lattice = Checkerboard2d()
+@dataclass
+class Flow:
+    transform: AffineTransformModuleDenseNet
+    spatial_net: ConvNet2d
+    n_blocks: int
 
-        return _CouplingLayer(transform, spatial_net, lattice, 0)
+    def build(self):
+        layers = []
+
+        for layer_id in range(2 * self.n_blocks):
+            transform = self.transform.build()
+            spatial_net = self.spatial_net.build()
+            layer = CouplingLayer(transform, spatial_net, layer_id)
+
+            layers.append(layer)
+
+        return Composition(*layers)
 
 
 class Model(BaseModel):

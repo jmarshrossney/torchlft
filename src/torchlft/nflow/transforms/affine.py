@@ -2,10 +2,9 @@ from math import log
 
 import torch
 
-from torchlft.transforms.core import Transform
+from torchlft.nflow.transforms.core import Transform
 
 Tensor = torch.Tensor
-
 
 
 def _affine_forward(x: Tensor, params: Tensor) -> tuple[Tensor, Tensor]:

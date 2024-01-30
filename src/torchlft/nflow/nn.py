@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import StrEnum, auto
+from enum import StrEnum
 from itertools import chain
 import warnings
 
@@ -12,6 +12,12 @@ warnings.filterwarnings("ignore", message="Lazy")
 class Activation(StrEnum):
     identity = "Identity"
     tanh = "Tanh"
+    leaky_relu = "LeakyReLU"
+
+    def __call__(self):
+        activation_cls = getattr(nn, str(self))
+        return activation_cls()
+
 
 """
     ELU = 1
@@ -64,11 +70,11 @@ def permute_io(net: nn.Module, spatial_dims: int) -> nn.Module:
 @dataclass(kw_only=True)
 class ConvNet2d:
     channels: list[int]
-    activation: Activation | None
+    activation: Activation
     kernel_radius: int | list[int]
 
     def __post_init__(self):
-        self.activation = self.activation or "Identity"
+        self.activation = self.activation
 
         if isinstance(self.kernel_radius, int):
             self.kernel_radius = [self.kernel_radius for _ in self.channels]
@@ -80,9 +86,7 @@ class ConvNet2d:
             )
             for n, r in zip(self.channels, self.kernel_radius, strict=True)
         ]
-        activations = [
-            getattr(nn, str(self.activation))() for _ in conv_layers
-        ]
+        activations = [self.activation() for _ in conv_layers]
         layers = list(chain(*zip(conv_layers, activations)))
         net = nn.Sequential(*layers)
 
@@ -92,12 +96,10 @@ class ConvNet2d:
 @dataclass(kw_only=True)
 class ConvNet1d:
     channels: list[int]
-    activation: Activation | None
+    activation: Activation
     kernel_radius: int | list[int]
 
     def __post_init__(self):
-        self.activation = self.activation or "Identity"
-
         if isinstance(self.kernel_radius, int):
             self.kernel_radius = [self.kernel_radius for _ in self.channels]
 
@@ -108,9 +110,7 @@ class ConvNet1d:
             )
             for n, r in zip(self.channels, self.kernel_radius, strict=True)
         ]
-        activations = [
-            getattr(nn, str(self.activation))() for _ in conv_layers
-        ]
+        activations = [self.activation() for _ in conv_layers]
         layers = list(chain(*zip(conv_layers, activations)))
         net = nn.Sequential(*layers)
 
@@ -127,9 +127,7 @@ class PointNet:
 
     def build(self):
         linear_layers = [nn.LazyLinear(n) for n in self.channels]
-        activations = [
-            getattr(nn, str(self.activation))() for _ in linear_layers
-        ]
+        activations = [self.activation() for _ in linear_layers]
         layers = list(chain(*zip(linear_layers, activations)))
         net = nn.Sequential(*layers)
         return net

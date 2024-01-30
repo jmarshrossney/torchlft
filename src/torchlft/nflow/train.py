@@ -1,18 +1,27 @@
 from abc import ABC, abstractmethod
 import logging
-from typing import Any, TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as Scheduler
-from tqdm import trange
+from tqdm import tqdm, trange
 
-from torchlft.model import Model
+from torchlft.nflow.model import Model
+from torchlft.nflow.metrics import LogWeightMetrics
+from torchlft.nflow.logging import Logger
+
+from torchlft.utils.torch import dict_stack
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger_ = logging.getLogger(__name__)
 
 Tensor: TypeAlias = torch.Tensor
+
+
+
+
+# TODO: as pandas dataframe with steps as index
 
 
 class Trainer(ABC):
@@ -22,15 +31,14 @@ class Trainer(ABC):
 
 
 # TODO: disable progress bar option
-
-
 class ReverseKLTrainer(Trainer):
+    logger = None
+
     def __init__(
         self,
         *,
         n_steps: int,
         batch_size: int,
-        log_metrics: bool = True,
         log_interval: int = 100,
         log_batch_size: int = 1024,
         log_n_batches: int = 10,
@@ -41,13 +49,13 @@ class ReverseKLTrainer(Trainer):
         self.n_steps = n_steps
         self.batch_size = batch_size
         # self.init_lr = init_lr
-        self.log_metrics = log_metrics
         self.log_interval = log_interval
         self.log_batch_size = log_batch_size
         self.log_n_batches = log_n_batches
         self.clip_grad_norm = clip_grad_norm
         self.pbar_interval = pbar_interval
         self.print_model_summary = print_model_summary
+        
 
     # @abstractmethod
     def configure_optimizers(
@@ -63,18 +71,25 @@ class ReverseKLTrainer(Trainer):
 
         return rev_kl
 
-    def metrics_step(self, model: Model, step: int):
-        #metrics = TrainingMetrics()
+    def logging_step(self, model: Model, step: int):
+        metrics = LogWeightMetrics()
 
-        for _ in range(self.metrics_n_batches):
-            fields, actions = model(self.metrics_batch_size)
-            #metrics.update(fields, actions)
+        for _ in range(self.log_n_batches):
+            fields, actions = model(self.log_batch_size)
+            log_weights = actions.pushforward - actions.target
+            metrics.update(log_weights)
 
-        #computed_metrics = metrics.compute()
-        # training_log.update(computed_metrics, step=step)
-        #print(computed_metrics)
+        computed_metrics = metrics.compute()
+        self.logger.update(computed_metrics, step=step)
 
-    def train(self, model: Model):  # -> ComputedTrainingMetrics:
+        return {k: float(v.mean()) for k, v in computed_metrics.items()}
+
+    def train(self, model: Model, logger: Logger | None = None):
+        if logger is not None:
+            self.logger = logger
+        else:
+            logger_.warning("No logger provided - logging will not occur!")
+
         # TODO: make configurable
         optimizer = torch.optim.Adam(
             model.parameters(), lr=0.001
@@ -87,16 +102,16 @@ class ReverseKLTrainer(Trainer):
         if self.print_model_summary:
             print(model)  # log?
 
-        # training_log = TrainingLog()
 
         with trange(self.n_steps + 1, desc="Training") as pbar:
-            pbar_stats = {}
+            if self.logger is not None:
+                mbar = tqdm(total=0, position=1, bar_format="{desc}:{postfix}")
+
             for step in pbar:
                 loss = self.training_step(model, step)
 
                 if step % self.pbar_interval == 0:
-                    pbar_stats |= {"loss": f"{loss.float():.5f}"}
-                    pbar.set_postfix(pbar_stats)
+                    pbar.set_postfix({"loss": f"{loss.float():.5f}"})
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -109,13 +124,13 @@ class ReverseKLTrainer(Trainer):
                 optimizer.step()
                 scheduler.step()
 
-                if step % self.metrics_interval == 0:
+                if self.logger is not None and step % self.log_interval == 0:
                     model.eval()
-                    metrics = self.metrics_step(model, step)
-                    # pbar_stats |= {
-                    #    "ess": f"{computed_metrics.ess.mean.float():.3f}"
-                    # }
-                    # pbar.set_postfix(pbar_stats)
+
+                    metrics = self.logging_step(model, step)
+                    mbar.set_description_str(f"Metrics (step {step})")
+                    mbar.set_postfix(metrics)
+
                     model.train()
 
-        return  # training_log
+        return
