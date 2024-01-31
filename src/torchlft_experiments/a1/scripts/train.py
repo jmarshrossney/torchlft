@@ -7,10 +7,9 @@ from jsonargparse import (
 from jsonargparse.typing import Path_drw
 import torch
 
-from torchlft_experiments.io import TrainingDirectory
 from torchlft_experiments.a1.model import Model
 from torchlft_experiments.a1.trainer import Trainer, Logger
-from torchlft.nflow.io import create_training_directory
+from torchlft.nflow.io import create_training_directory, load_model_from_checkpoint
 
 parser = ArgumentParser(prog="train")
 
@@ -53,7 +52,7 @@ def main(config: Namespace) -> None:
 
     d = logger.as_dict()
 
-    train_dir.save_checkpoint(model, 0)
+    train_dir.save_checkpoint(model, trainer.n_steps)
 
-    print({k: v.mean(dim=1) for k, v in d.items()})
+    #print({k: v.mean(dim=1) for k, v in d.items()})
 

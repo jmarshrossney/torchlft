@@ -21,7 +21,9 @@ class Logger:
     """
 
     def __init__(self, train_dir: TrainingDirectory | None = None):
-        if train_dir is None:
+        if train_dir is not None:
+            train_dir.log_dir.mkdir(parents=False, exist_ok=True)
+        else:
             logger.warning("No logging directory specified!")
 
         self._train_dir = train_dir

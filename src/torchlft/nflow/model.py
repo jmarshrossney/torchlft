@@ -4,7 +4,35 @@ from typing import NamedTuple, TypeAlias
 import torch
 import torch.nn as nn
 
+from torchlft.utils.torch import tuple_concat
+
 Tensor: TypeAlias = torch.Tensor
+
+from math import exp
+from random import random
+
+def metropolis_hastings(log_weights: Tensor):
+    assert log_weights.squeeze().dim() == 1
+
+    log_weights = log_weights.squeeze().tolist()
+
+    current = log_weights.pop(0)
+
+    idx = 0
+    indices = []
+
+    for proposal in log_weights:
+        if (proposal > current) or (
+            random() < min(1, exp(proposal - current))
+        ):
+            current = proposal
+            idx += 1
+
+        indices.append(idx)
+
+    indices = torch.tensor(indices, dtype=torch.long)
+
+    return indices
 
 
 class Model(nn.Module, metaclass=ABCMeta):
@@ -62,10 +90,21 @@ class Model(nn.Module, metaclass=ABCMeta):
         return fields, actions
 
     @torch.no_grad()
-    def sample(self, sample_size: int) -> tuple[Tensor, Tensor]:
-        fields, actions = self(sample_size)
-        log_weights = actions.pushforward - actions.target
-        return fields.outputs, log_weights
+    def weighted_sample(self, batch_size: int, n_batches: int = 1) -> tuple[Tensor, Tensor]:
+        sample = []
+        for _ in range(n_batches):
+            fields, actions = self(batch_size)
+            log_weights = actions.pushforward - actions.target
+            sample.append([fields.outputs, log_weights])
+
+        return tuple_concat(sample)
+
+    @torch.no_grad()
+    def metropolis_sample(self, batch_size: int, n_batches: int = 1) -> tuple[Tensor, Tensor]:
+        outputs, log_weights = self.weighted_sample(batch_size, n_batches)
+        indices = metropolis_hastings(log_weights)
+        return (outputs, indices)
+
 
     @abstractmethod
     def flow_forward(

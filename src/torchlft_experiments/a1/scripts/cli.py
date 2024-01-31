@@ -1,12 +1,13 @@
 from jsonargparse import ArgumentParser, Namespace
 
 import torchlft_experiments.a1.scripts.train as train
+import torchlft_experiments.a1.scripts.test as test
 
-parser = ArgumentParser(prog="exp1")
+parser = ArgumentParser(prog="a1")
 
 subcommands = parser.add_subcommands()
 subcommands.add_subcommand("train", train.parser)
-# subcommands.add_subcommand("test", test.parser)
+subcommands.add_subcommand("test", test.parser)
 
 
 def main(config: Namespace) -> None:
@@ -14,8 +15,6 @@ def main(config: Namespace) -> None:
         train.main(config.train)
     elif config.subcommand == "test":
         test.main(config.test)
-    elif config.subcommand == "hmc":
-        hmc.main(config.hmc)
 
 
 if __name__ == "__main__":

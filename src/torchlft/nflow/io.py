@@ -40,12 +40,22 @@ class TrainingDirectory:
     def config_file(self) -> Path:
         return self._root / "config.yaml"
 
+    def list_checkpoints(self) -> list[int]:
+        files = list(self.checkpoint_dir.glob("step_*.ckpt"))
+        steps = [f.stem.strip("step_") for f in files]
+        return list(sorted(steps))
+
+    def last_checkpoint(self) -> int | None:
+        checkpoints = self.list_checkpoints()
+        return None if not checkpoints else max(checkpoints)
+
     def save_checkpoint(
         self, model, step: int, overwrite_existing: bool = False
     ) -> None:
+        self.checkpoint_dir.mkdir(parents=False, exist_ok=True)
         ckpt_file = self.checkpoint_dir / f"step_{step}.ckpt"
 
-        assert self._last_checkpoint is None or step > self._last_checkpoint
+        #assert self.last_checkpoint is None or step > self._last_checkpoint
 
         if overwrite_existing and self._last_checkpoint is not None:
             pass  # TODO: delete existing checkpoint using shutil probably
@@ -53,25 +63,12 @@ class TrainingDirectory:
         logger.info(f"Saving model weights to {ckpt_file}")
         torch.save(model.state_dict(), ckpt_file)
 
-        self._last_checkpoint = step
-
     def load_checkpoint(self, step: int | None = None):
-        # TODO: allow modifications to config when loading?
-        # TODO: load parser
-
-        step = step if step is not None else self._last_checkpoint
-
-        logger.info(f"Loading training config from {self.config_file}")
-        config = parser.parse_path(self.config_file)
-        config = parser.instantiate_classes(config)
-        model = config.model
-
+        step = step or self.last_checkpoint()
         checkpoint_file = self.checkpoint_dir / f"step_{step}.ckpt"
         logger.info(f"Loading checkpoint from {checkpoint_file}")
-        checkpoint = torch.load(self.checkpoint_file)
-        model.load_state_dict(checkpoint)
-
-        return model
+        checkpoint = torch.load(checkpoint_file)
+        return checkpoint
 
 
 def get_version():
@@ -114,6 +111,8 @@ def create_training_directory(
     logger.info(f"Creating new directory at {root}")
     root.mkdir(exist_ok=False, parents=True)
 
+    train_dir = TrainingDirectory(root)
+
     config_str = parser.dump(config, skip_none=False)
 
     header = "# Run on {ts} using torchlft v{v}, commit {cm}".format(
@@ -123,12 +122,12 @@ def create_training_directory(
     )
     config_str = header + "\n" + config_str
 
-    config_file = root / "config.yaml"
+    config_file = train_dir.config_file
     logger.info(f"Saving config to {config_file}")
     with config_file.open("w") as file:
         file.write(config_str)
 
-    return TrainingDirectory(root)
+    return train_dir
 
 
 def load_model_from_checkpoint(
@@ -136,6 +135,7 @@ def load_model_from_checkpoint(
     parser: ArgumentParser,
     step: int | None = None,
 ) -> Model:
+    # TODO: allow modifications to config when loading?
     logger.info(f"Loading training config from {train_dir.config_file}")
     config = parser.parse_path(train_dir.config_file)
     config = parser.instantiate_classes(config)
