@@ -1,20 +1,20 @@
 model:
   target:
-    lattice: [6, 6]
-    m_sq: 4.
+    lattice: [2, 2]
+    m_sq: 1.
 
   flow:
     transform:
       net:
-        channels: [10]
+        channels: [4]
         activation: tanh
     spatial_net:
-      channels: [3]
-      activation: identity
-      kernel_radius: 3
-    n_blocks: 1
+      channels: [4]
+      activation: tanh
+      kernel_radius: 1
+    n_blocks: 2
 
 train:
-  n_steps: 1000
+  n_steps: 2000
   batch_size: 1000
   log_n_batches: 13

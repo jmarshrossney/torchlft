@@ -2,6 +2,7 @@ from typing import TypeAlias
 
 import torch
 
+Tensor: TypeAlias = torch.Tensor
 BoolTensor: TypeAlias = torch.BoolTensor
 
 
@@ -63,3 +64,32 @@ def dilated_checkerboard_mask(
     checker = checker.roll((-δμ, -δν), (0, 1))
 
     return checker
+
+
+
+def laplacian(lattice_length: int, lattice_dim: int) -> Tensor:
+    """
+    Creates a Laplacian matrix.
+
+    This works by taking the kronecker product of the one-dimensional
+    Laplacian matrix with the identity.
+
+    Assumes a square, periodic lattice.
+    """
+    assert lattice_dim in (1, 2)
+
+    identity = torch.eye(lattice_length)
+    lap_1d = (
+        -2 * identity  # main diagonal
+        + torch.diag(torch.ones(lattice_length - 1), diagonal=1)  # upper
+        + torch.diag(torch.ones(lattice_length - 1), diagonal=-1)  # lower
+    )
+    # periodicity
+    lap_1d[0, -1] += 1
+    lap_1d[-1, 0] += 1
+
+    if lattice_dim == 1:
+        return lap_1d
+
+    lap_2d = torch.kron(lap_1d, identity) + torch.kron(identity, lap_1d)
+    return lap_2d

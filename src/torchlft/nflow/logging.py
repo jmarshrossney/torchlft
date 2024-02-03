@@ -32,7 +32,7 @@ class Logger:
 
     @property
     def log_dir(self) -> Path:
-        return self._train_dir.log_dir
+        return self._train_dir.log_dir if self._train_dir is not None else None
 
     def update(self, metrics: dict[str, Tensor], step: int):
         assert step not in self._steps

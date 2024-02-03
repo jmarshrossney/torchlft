@@ -39,6 +39,7 @@ class ReverseKLTrainer(Trainer):
         *,
         n_steps: int,
         batch_size: int,
+        init_lr: float = 0.001,
         log_interval: int = 100,
         log_batch_size: int = 1024,
         log_n_batches: int = 10,
@@ -48,7 +49,7 @@ class ReverseKLTrainer(Trainer):
     ):
         self.n_steps = n_steps
         self.batch_size = batch_size
-        # self.init_lr = init_lr
+        self.init_lr = init_lr
         self.log_interval = log_interval
         self.log_batch_size = log_batch_size
         self.log_n_batches = log_n_batches
@@ -91,9 +92,7 @@ class ReverseKLTrainer(Trainer):
             logger_.warning("No logger provided - logging will not occur!")
 
         # TODO: make configurable
-        optimizer = torch.optim.Adam(
-            model.parameters(), lr=0.001
-        )  # self.init_lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=self.init_lr)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.n_steps
         )
