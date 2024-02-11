@@ -25,6 +25,13 @@ pytest = "^7.4.4"
 
 [tool.poetry.group.exp.dependencies]
 jsonargparse = {extras = ["all"], version = "^4.27.1"}
+jupyterlab = "^4.1.0"
+jupytext = "^1.16.1"
+ipywidgets = "^8.1.2"
+matplotlib = "^3.8.2"
+
+[tool.jupytext]
+formats= "ipynb,md"
 
 [tool.black]
 line-length = 79
