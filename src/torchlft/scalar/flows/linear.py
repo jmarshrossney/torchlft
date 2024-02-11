@@ -22,7 +22,7 @@ class Model(BaseModel):
         lattice_dim: LatticeDim,
         m_sq: PositiveFloat
     ):
-        super().__init__(1)
+        super().__init__()
         L, d = lattice_length, lattice_dim
         D = pow(L, d)
         

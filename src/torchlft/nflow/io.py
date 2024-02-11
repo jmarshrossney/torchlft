@@ -101,13 +101,16 @@ def create_training_directory(
     path: str | PathLike,
     config: Namespace,
     parser: ArgumentParser,
+    name: str | None = None,
 ) -> TrainingDirectory:
     path = path if isinstance(path, Path) else Path(str(path))
     path = path.resolve()
 
     timestamp = datetime.now()
 
-    root = path / "train_{ts}".format(ts=timestamp.strftime("%Y%m%d%H%M%S"))
+    name = name or "train_{ts}".format(ts=timestamp.strftime("%Y%m%d%H%M%S"))
+
+    root = path / name
     logger.info(f"Creating new directory at {root}")
     root.mkdir(exist_ok=False, parents=True)
 

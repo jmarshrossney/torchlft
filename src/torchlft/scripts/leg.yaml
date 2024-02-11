@@ -1,0 +1,18 @@
+model:
+  class_path: torchlft.scalar.flows.legacy_coupling.Model
+  init_args:
+    target:
+      lattice_length: 6
+      lattice_dim: 2
+      m_sq: 2.
+
+    flow:
+      net:
+        channels: [64]
+        activation: tanh
+      n_blocks: 2
+
+train:
+  n_steps: 2000
+  batch_size: 2000
+  init_lr: 0.005

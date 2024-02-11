@@ -46,23 +46,9 @@ class Model(nn.Module, metaclass=ABCMeta):
         pushforward: Tensor
         pullback: Tensor
 
-    def __init__(self, lattice: tuple[int, ...], **couplings: float):
+    def __init__(self):
         super().__init__()
-        self._lattice = lattice
-        self._couplings = couplings
         self.register_buffer("_dummy_buffer", torch.tensor(0.0))
-
-    @property
-    def lattice(self) -> tuple[int, ...]:
-        return self._lattice
-
-    @lattice.setter
-    def lattice(self, new: tuple[int, ...]) -> None:
-        self._lattice = new
-
-    @property
-    def couplings(self) -> dict[str, float]:
-        return self._couplings
 
     @property
     def device(self) -> torch.device:
