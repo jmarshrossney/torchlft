@@ -13,28 +13,30 @@ from torchlft.nflow.transforms.affine import affine_transform
 from torchlft.nflow.transforms.wrappers import sum_log_gradient
 from torchlft.nflow.utils import Composition
 
-from torchlft.scalar.action import ActionV1
-from torchlft.scalar.coupling_layers import LegacyCouplingLayer
+from torchlft.scalar.action import ActionV2
+from torchlft.scalar.coupling_layers import CouplingLayer
 
 Tensor: TypeAlias = torch.Tensor
+
 
 @dataclass
 class Target:
     lattice_length: PositiveInt
-    lattice_dim: PositiveInt
     m_sq: PositiveFloat
 
     def __post_init__(self):
         assert self.lattice_length % 2 == 0
-        assert self.lattice_dim in (1, 2)
+        # assert self.lattice_dim in (1, 2)
         assert self.m_sq > 0
 
-    def build(self) -> ActionV1:
-        return ActionV1(**asdict(self))
+    def build(self) -> ActionV2:
+        # return ActionV1(**asdict(self))
+        return ActionV2(m_sq=self.m_sq, lattice_dim=2)
 
 
 @dataclass(kw_only=True)
 class AffineTransformModule:
+    net: PointNet
     scale_fn: str = "exponential"
     symmetric: bool = False
     shift_only: bool = False
@@ -42,8 +44,8 @@ class AffineTransformModule:
 
     def build(self):
         transform_cls = affine_transform()
-        net = nn.Identity()
-        #nn.LazyLinear((lattice_size // 2) * transform_cls.n_params)
+        net = self.net.build()
+        net.append(nn.LazyLinear(transform_cls.n_params))
         transform = UnivariateTransformModule(
             transform_cls, net, wrappers=[sum_log_gradient]
         )
@@ -53,18 +55,17 @@ class AffineTransformModule:
 @dataclass
 class Flow:
     transform: AffineTransformModule
-    net: PointNet
+    spatial_net: ConvNet2d
     n_blocks: int
 
-    def build(self, lattice_size: int):
+    def build(self):
         layers = []
 
         for layer_id in range(2 * self.n_blocks):
             transform = self.transform.build()
-            size_out = (lattice_size // 2) * transform.transform_cls.n_params
-            net = self.net.build()
-            net.append(nn.LazyLinear(size_out))
-            layer = LegacyCouplingLayer(transform, net, layer_id)
+            spatial_net = self.spatial_net.build()
+            layer = CouplingLayer(transform, spatial_net, layer_id)
+
             layers.append(layer)
 
         return Composition(*layers)
@@ -78,26 +79,25 @@ class Model(BaseModel):
     ):
         super().__init__()
 
-        self.lattice_size = pow(target.lattice_length, target.lattice_dim)
+        self.lattice_length = target.lattice_length
         self.target_action = target.build()
-        self.register_module("flow", flow.build(self.lattice_size))
+        self.register_module("flow", flow.build())
 
     def flow_forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
-        # permute to checkerboard
-        φ, ldj = self.flow(z)
-        # permute back
-        return φ, ldj
+        return self.flow(z)
 
     def base(self, batch_size: PositiveInt) -> tuple[Tensor, Tensor]:
         z = torch.empty(
             size=(
                 batch_size,
-                self.lattice_size,
+                self.lattice_length,
+                self.lattice_length,
+                1,
             ),
             device=self.device,
             dtype=self.dtype,
         ).normal_()
-        S_z = (0.5 * z * z).sum(dim=1, keepdim=True)
+        S_z = (0.5 * z * z).flatten(1).sum(dim=1, keepdim=True)
         return z, S_z
 
     def target(self, φ: Tensor) -> Tensor:

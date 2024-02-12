@@ -61,8 +61,6 @@ def main(config: Namespace) -> None:
 
     model = model.to("cpu")
 
-    d = logger.as_dict()
-
     train_dir.save_checkpoint(model, trainer.n_steps)
 
     return model, logger, train_dir

@@ -42,6 +42,9 @@ class Logger:
         self._metrics.append(metrics)
 
     def as_dict(self) -> dict[str, Tensor]:
-        steps = torch.tensor(self._steps, dtype=torch.long)
         return dict_stack(self._metrics)
 
+    
+    @property
+    def steps(self) -> Tensor:
+        return torch.tensor(self._steps, dtype=torch.long)

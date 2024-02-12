@@ -4,6 +4,7 @@ import torch
 
 Tensor: TypeAlias = torch.Tensor
 
+
 def dot(x: Tensor, y: Tensor) -> Tensor:
     return torch.einsum("...i,...i->...", x, y)
 

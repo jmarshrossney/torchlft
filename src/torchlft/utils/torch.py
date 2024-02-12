@@ -11,9 +11,14 @@ Tensor = torch.Tensor
 def mod_2pi(θ: Tensor) -> Tensor:
     return torch.remainder(θ, 2 * π)
 
+
+def log_cosh(x: Tensor) -> Tensor:
+    """Numerically stable implementation of log(cosh(x))"""
+    return abs(x) + torch.log1p(torch.exp(-1 * abs(x))) - log(2)
+
+
 def sum_except_batch(x: Tensor, keepdim: bool = False) -> Tensor:
     return x.flatten(start_dim=1).sum(dim=1, keepdim=keepdim)
-
 
 
 def _as_real(z: Tensor) -> Tensor:
@@ -28,11 +33,13 @@ def as_real(
     return (_as_real(t) for t in inputs)
 
 
-
 def tuple_clone(tensors: tuple[Tensor, ...]) -> tuple[Tensor, ...]:
     return type(tensors)([t.clone() for t in tensors])
 
-def tuple_concat(tuples: Iterable[tuple[Tensor, ...]], dim: int = 0) -> tuple[Tensor, ...]:
+
+def tuple_concat(
+    tuples: Iterable[tuple[Tensor, ...]], dim: int = 0
+) -> tuple[Tensor, ...]:
     """
     Concatenation of tuples of tensors.
 
@@ -47,8 +54,10 @@ def tuple_concat(tuples: Iterable[tuple[Tensor, ...]], dim: int = 0) -> tuple[Te
         (torch.Size([3]), torch.Size([30]), torch.Size([3, 10]))
 
     """
-    #return type(tuples)(torch.cat(tensors, dim=dim) for tensors in map(list, zip(*tuples)))
-    return type(tuples)(torch.cat(tensors, dim=dim) for tensors in zip(*tuples))
+    # return type(tuples)(torch.cat(tensors, dim=dim) for tensors in map(list, zip(*tuples)))
+    return type(tuples)(
+        torch.cat(tensors, dim=dim) for tensors in zip(*tuples)
+    )
 
 
 def _tuple_stack(
@@ -68,9 +77,8 @@ def tuple_stack(tensors: tuple[tuple[Tensor, ...]], dim: int = 0) -> tuple:
     )
 
 
-
 def dict_concat(
-        dicts: Iterable[dict[str, Tensor]], dim: int = 0, strict: bool = True
+    dicts: Iterable[dict[str, Tensor]], dim: int = 0, strict: bool = True
 ) -> dict[str, Tensor]:
     """
     Dim-zero concatenation of dicts of torch.Tensors.
@@ -105,14 +113,17 @@ def dict_concat(
             for k in keys
         }
 
+
 def dict_stack(
-        dicts: Iterable[dict[str, Tensor]], dim: int = 0, strict: bool = True
+    dicts: Iterable[dict[str, Tensor]], dim: int = 0, strict: bool = True
 ) -> dict[str, Tensor]:
     keys = set([k for d in dicts for k in d.keys()])
     if strict:
         return {k: torch.stack([d[k] for d in dicts], dim=dim) for k in keys}
     else:
         return {
-            k: torch.stack([d.get(k, torch.tensor([]), dim=dim) for d in dicts])
+            k: torch.stack(
+                [d.get(k, torch.tensor([]), dim=dim) for d in dicts]
+            )
             for k in keys
         }

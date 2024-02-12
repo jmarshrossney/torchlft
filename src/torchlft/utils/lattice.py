@@ -66,7 +66,6 @@ def dilated_checkerboard_mask(
     return checker
 
 
-
 def laplacian(lattice_length: int, lattice_dim: int) -> Tensor:
     """
     Creates a Laplacian matrix.
@@ -93,3 +92,19 @@ def laplacian(lattice_length: int, lattice_dim: int) -> Tensor:
 
     lap_2d = torch.kron(lap_1d, identity) + torch.kron(identity, lap_1d)
     return lap_2d
+
+
+def restore_geometry_2d(matrix: Tensor, lattice: tuple[int, int]) -> Tensor:
+    L, T = lattice
+    assert matrix.shape[0] == L * T
+
+    return torch.stack(
+        [
+            row.view(L, T).roll(
+                (-(i // T), -(i % L)),
+                dims=(0, 1),
+            )
+            for i, row in enumerate(matrix)
+        ],
+        dim=0,
+    ).mean(dim=0)
