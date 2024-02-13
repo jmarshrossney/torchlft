@@ -9,10 +9,10 @@ BoolTensor: TypeAlias = torch.BoolTensor
 def make_2d_striped_mask(
     lattice: tuple[int, int], dim: int, period: int = 2, offset: int = 0
 ) -> BoolTensor:
-    assert dim in Dimensions2d
+    assert dim in (1, 2)  # Dimensions2d
     assert period >= 2
 
-    μ, ν = Dimensions2d
+    μ, ν = 1, 2  # Dimensions2d
 
     k = 1 if dim == ν else 2
 

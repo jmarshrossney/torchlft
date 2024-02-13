@@ -1,6 +1,7 @@
-from pathlib import Path
+from abc import ABC, abstractmethod
+from collections import OrderedDict
 import logging
-from typing import Any, ClassVar, Self, TypeAlias
+from typing import Any, TypeAlias
 
 import torch
 
@@ -12,39 +13,63 @@ logger = logging.getLogger(__name__)
 
 Tensor: TypeAlias = torch.Tensor
 
-class Logger:
+
+class Logger(ABC):
+    def __init__(self):
+        self._train_dir = None
+
+    @property
+    def train_dir(self) -> TrainingDirectory | None:
+        return self._train_dir
+
+    @train_dir.setter
+    def train_dir(self, td: TrainingDirectory) -> None:
+        if self._train_dir is not None:
+            raise Exception(
+                "There is already a training directory associated with this logger!"
+            )
+
+        assert isinstance(td, TrainingDirectory)
+        assert td.root.is_dir()
+
+        td.log_dir.mkdir(parents=False, exist_ok=True)
+
+        self._train_dir = td
+
+    @abstractmethod
+    def update(self, data: Any, step: int, **extra_context) -> None:
+        ...
+
+
+class MonotoneIntegerDict(OrderedDict):
+    def __setitem__(self, key, value):
+        assert isinstance(key, int)
+        if bool(self):
+            assert key > max(self.keys())
+        super().__setitem__(key, value)
+
+
+class DefaultLogger(Logger):
     """
-    Collects logged metrics.
+    Collects logged data and serves them as a dict of tensors.
     Potentially linked to a training directory into which
     expensive things (e.g. large tensors, images) are immediately logged.
-    Or just collects summary stats and aggregates them.
     """
 
-    def __init__(self, train_dir: TrainingDirectory | None = None):
-        if train_dir is not None:
-            train_dir.log_dir.mkdir(parents=False, exist_ok=True)
-        else:
-            logger.warning("No logging directory specified!")
+    def __init__(self):
+        super().__init__()
+        self._data = MonotoneIntegerDict()
 
-        self._train_dir = train_dir
-        self._steps = []
-        self._metrics = []
+    def update(self, data: dict[str, Tensor], step: int):
+        self.data[step] = data
 
     @property
-    def log_dir(self) -> Path:
-        return self._train_dir.log_dir if self._train_dir is not None else None
+    def data(self) -> dict[int, dict[str, Tensor]]:
+        return self._data
 
-    def update(self, metrics: dict[str, Tensor], step: int):
-        assert step not in self._steps
-        if self._steps:
-            assert step > max(self._steps)
-        self._steps.append(step)
-        self._metrics.append(metrics)
+    def get_data(self) -> dict[str, Tensor]:
+        steps, data = zip(*self._data.items())
+        steps = torch.tensor(steps, dtype=torch.long)
+        data = dict_stack(data)
 
-    def as_dict(self) -> dict[str, Tensor]:
-        return dict_stack(self._metrics)
-
-    
-    @property
-    def steps(self) -> Tensor:
-        return torch.tensor(self._steps, dtype=torch.long)
+        return {"steps": steps} | data

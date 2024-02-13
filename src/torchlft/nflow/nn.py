@@ -74,8 +74,6 @@ class ConvNet2d:
     kernel_radius: int | list[int]
 
     def __post_init__(self):
-        self.activation = self.activation
-
         if isinstance(self.kernel_radius, int):
             self.kernel_radius = [self.kernel_radius for _ in self.channels]
 
@@ -118,12 +116,22 @@ class ConvNet1d:
 
 
 @dataclass(kw_only=True)
+class DenseNet:
+    sizes: list[int]
+    activation: Activation
+
+    def build(self):
+        linear_layers = [nn.LazyLinear(n) for n in self.sizes]
+        activations = [self.activation() for _ in linear_layers]
+        layers = list(chain(*zip(linear_layers, activations)))
+        net = nn.Sequential(*layers)
+        return net
+
+
+@dataclass(kw_only=True)
 class PointNet:
     channels: list[int]
-    activation: Activation | None
-
-    def __post_init__(self):
-        self.activation = self.activation or "Identity"
+    activation: Activation
 
     def build(self):
         linear_layers = [nn.LazyLinear(n) for n in self.channels]

@@ -1,6 +1,8 @@
+from math import log, pi as π
 from typing import TypeAlias
 
 import torch
+import torch.nn as nn
 
 from torchlft.utils.lattice import laplacian
 from torchlft.utils.linalg import dot, mv
@@ -8,25 +10,44 @@ from torchlft.utils.linalg import dot, mv
 Tensor: TypeAlias = torch.Tensor
 
 
-class ActionV1:
-    def __init__(self, lattice_length: int, m_sq: float, lattice_dim: int = 2):
+class GaussianAction(nn.Module):
+    def __init__(self, lattice_length: int, lattice_dim: int, m_sq: float):
+        super().__init__()
+        assert lattice_length % 2 == 0
+        assert lattice_dim in (1, 2)
+        assert m_sq > 0
+
         L, d = lattice_length, lattice_dim
+        D = pow(L, d)
 
-        assert d in (1, 2)
+        K = -laplacian(L, d) + m_sq * torch.eye(D)
+        Σ = torch.linalg.inv(K)
+        C = torch.linalg.cholesky(Σ)
 
-        self.kernel = -laplacian(L, d) + m_sq * torch.eye(L**d)
+        log_abs_det_C = C.diag().log().sum()
 
-        self.lattice_length = lattice_length
-        self.m_sq = m_sq
+        # check |Σ| = |C|^2
+        assert torch.allclose(
+            2 * log_abs_det_C,
+            torch.linalg.slogdet(Σ)[1],
+            atol=1e-5,
+        )
 
-    def __call__(self, φ: Tensor) -> Tensor:
-        φ = φ.flatten(start_dim=1)
+        self.lattice_length = L
+        self.lattice_dim = d
+        self.lattice_size = D
+        self.log_norm = 0.5 * D * log(2 * π) + log_abs_det_C
+
+        self.register_buffer("kernel", K)
+        self.register_buffer("covariance", Σ)
+        self.register_buffer("cholesky", C)
+
+    def forward(self, φ: Tensor) -> Tensor:
         K = self.kernel
         S = 0.5 * dot(φ, mv(K, φ))
-        return S.unsqueeze(-1)
+        return S + self.log_norm
 
     def grad(self, φ: Tensor) -> Tensor:
-        φ = φ.flatten(start_dim=1)
         K = self.kernel
         return mv(K, φ)
 

@@ -1,7 +1,5 @@
 from collections.abc import Iterable
-from enum import Enum
 from math import log, pi as π
-from typing import NamedTuple
 
 import torch
 
@@ -67,7 +65,7 @@ def _tuple_stack(
 
 
 def tuple_stack(tensors: tuple[tuple[Tensor, ...]], dim: int = 0) -> tuple:
-    return type(inputs)(
+    return type(tensors)(
         [
             torch.stack(t, dim=dim)
             if isinstance(t[0], torch.Tensor)

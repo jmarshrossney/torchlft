@@ -3,13 +3,12 @@ from typing import TypeAlias
 import torch
 import torch.nn as nn
 
-from torchlft.nflow.nn import Activation, ConvNet2d, PointNet
 from torchlft.nflow.partition import Checkerboard2d
 from torchlft.nflow.transforms.core import UnivariateTransformModule
+from torchlft.utils.linalg import mv
 
 
 Tensor: TypeAlias = torch.Tensor
-
 
 
 class CouplingLayer(nn.Module):
@@ -21,11 +20,11 @@ class CouplingLayer(nn.Module):
     ):
         super().__init__()
 
-        self.register_module("transform", transform)
-        self.register_module("spatial_net", spatial_net)
-
         partitioning = Checkerboard2d(partition_id=layer_id)
         self.register_module("partitioning", partitioning)
+
+        self.register_module("spatial_net", spatial_net)
+        self.register_module("transform", transform)
 
     def forward(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
         # Get active and frozen masks
@@ -44,6 +43,14 @@ class CouplingLayer(nn.Module):
         return φ_out, ldj
 
 
+class UpscalingLayer(nn.Module):
+    def forward(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
+        _, L, T, n = φ_in.shape
+        assert n % 4 == 0
+
+        # TODO: see https://github.com/marshrossney/multilevel-flow-experiments/blob/basic-multilevel/notebooks/basic_multilevel.ipynb
+
+
 class LegacyCouplingLayer(nn.Module):
     def __init__(
         self,
@@ -52,11 +59,10 @@ class LegacyCouplingLayer(nn.Module):
         layer_id: int,
     ):
         super().__init__()
-        self.register_module("transform", transform)
         self.register_module("net", net)
+        self.register_module("transform", transform)
 
         self.layer_id = layer_id
-
 
     def split(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
         φ_A, φ_B = φ_in.tensor_split(2, dim=1)
@@ -70,7 +76,7 @@ class LegacyCouplingLayer(nn.Module):
             return torch.cat([φ_p, φ_a], dim=1)
         else:
             return torch.cat([φ_a, φ_p], dim=1)
-    
+
     def forward(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
         N, D = φ_in.shape
         assert D % 2 == 0
@@ -87,3 +93,24 @@ class LegacyCouplingLayer(nn.Module):
         φ_out = self.join(φ_a.squeeze(-1), φ_p)
 
         return φ_out, ldj
+
+
+class TriangularLinearLayer(nn.Module):
+    def __init__(self, size: int):
+        super().__init__()
+        D = size
+
+        weight = torch.empty(D, D).uniform_(0, 1)
+        self.register_parameter("weight", nn.Parameter(weight))
+
+        mask = torch.ones(D, D).tril().bool()
+        self.register_buffer("mask", mask)
+
+    def get_weight(self) -> Tensor:
+        return self.mask * self.weight
+
+    def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
+        L = self.get_weight()
+        φ = mv(L, z)
+        log_det_dφdz = L.diag().log().sum().expand(φ.shape[0])
+        return φ, log_det_dφdz

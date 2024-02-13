@@ -55,7 +55,7 @@ class TrainingDirectory:
         self.checkpoint_dir.mkdir(parents=False, exist_ok=True)
         ckpt_file = self.checkpoint_dir / f"step_{step}.ckpt"
 
-        #assert self.last_checkpoint is None or step > self._last_checkpoint
+        # assert self.last_checkpoint is None or step > self._last_checkpoint
 
         if overwrite_existing and self._last_checkpoint is not None:
             pass  # TODO: delete existing checkpoint using shutil probably

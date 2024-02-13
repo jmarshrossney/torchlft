@@ -2,6 +2,7 @@ import torch
 
 from torchlft.scalar.action import ActionV1, ActionV2
 
+
 def test_actions_agree():
     d = 2
     L = 6

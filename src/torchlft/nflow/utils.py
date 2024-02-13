@@ -26,16 +26,17 @@ class Composition(nn.Module):
         return outputs, ldj_total
 
 
-def get_jacobian(model, input: Tensor | None = None):
-    if input is None:
-        input, _ = model.base(1)
-        input = input[0]
-
+def get_jacobian(transform, inputs: Tensor):
     def forward(input):
-        output, _ = model.flow_forward(input.unsqueeze(0))
+        output, _ = transform(input.unsqueeze(0))
         output = output.squeeze(0)
         return output, output
 
-    jac, output = torch.func.jacrev(forward)(input)
+    jac, outputs = torch.vmap(torch.func.jacrev(forward))(inputs)
 
-    return jac, input, output
+    return jac, inputs, outputs
+
+
+def get_model_jacobian(model, batch_size: int):
+    inputs, _ = model.sample_base(batch_size)
+    return get_jacobian(model.flow_forward, inputs)

@@ -1,7 +1,6 @@
 """
 TODO: integrated autocorrelation and rejection histogram from https://github.com/marshrossney/torchlft/blob/archive/rewrite-2023/src/torchlft/metrics.py
 """
-from functools import partial
 from math import exp
 from random import random
 from typing import TypeAlias

@@ -157,28 +157,55 @@ ax.legend()
 ## Fourier Transform
 
 
-The discrete Fourier Transform (DFT) diagonalises the Laplacian matrix, and the eigenvalues are the frequencies.
-
-$$
-\begin{equation}
-    S[\phi] = \frac{1}{2} \sum_{x,y\in\Lambda} \Sigma_{xy}^{-1} \phi_x \phi_y
-    = \frac{1}{2} \sum_{k\in \widetilde{\Lambda}} \lambda_k | \mathcal{F}(\phi)_k |^2 \, , \qquad
-\end{equation}
-$$
-
-where
+The discrete Fourier Transform (DFT) 
 
 $$
 \begin{aligned}
-    \lambda_k = \frac{1}{|\Lambda|} \left[ m_0^2 + 4 \sum_{\mu=1}^2 \hat{k}_\mu \right] \, , \qquad \hat{k}_\mu = 4 \sin^2 \frac{k_\mu}{2}
+    \mathcal{F}(\phi)_k = \sum_{x\in\Lambda} e^{i k \cdot x} \phi_x \, , \qquad
+    k \cdot x \equiv \sum_{\mu=1}^2 k_\mu x_\mu
 \end{aligned}
 $$
 
-are the eigenvalues.
+diagonalises the Laplacian matrix,
+
+$$
+\begin{aligned}
+    S[\phi] = \frac{1}{2} \sum_{x,y\in\Lambda} \Sigma_{xy}^{-1} \phi_x \phi_y
+    = \frac{1}{2} \sum_{k\in \widetilde{\Lambda}} \lambda_k | \mathcal{F}(\phi)_k |^2 \, , \qquad
+\end{aligned}
+$$
+
+where $\lambda_k$ are eigenvalues labelled by the corresponding momentum vector $k = (k_1, k_2)$, and defined by 
+
+$$
+\begin{aligned}
+    \lambda_k = \frac{1}{|\Lambda|} \left[ m_0^2 + \sum_{\mu=1}^2 \hat{k}_\mu \right] \, , \qquad \hat{k}_\mu = 4 \sin^2 \frac{k_\mu}{2}
+\end{aligned}
+$$
+
+Assuming an $L \times L$ square lattice with $a=1$ there are $L^2 / 2 + L/2 = \frac{L(L+1)}{2}$ unique eigenvalues.
 
 ```python
 # TODO
 # My old code which generated free fields via inverse FT
+
+l = 4
+D = l * l
+m_sq = 0.1
+
+k = torch.stack(
+    torch.meshgrid(torch.arange(l), torch.arange(l)),
+    dim=-1,
+)
+k_hat = (k / 2).sin().pow(2) * 4
+
+λ = (1 / D) * (m_sq + k_hat.sum(dim=-1))
+
+λ
+
+#K = -laplacian(l, 2) + m_sq * torch.eye(D)
+
+
 ```
 
 The DFT transforms real-valued fields into complex Hermitean fields in Fourier space.
@@ -291,58 +318,103 @@ $$
 \end{aligned}
 $$
 
+```python
+l = 4
+D = l * l
+m_sq = 0.1
 
-## Learning the Cholesky Decomposition with an Autoregressive flow
+
+
+K = -laplacian(l, 2) + m_sq * torch.eye(D)
+Σ = torch.linalg.inv(K)
+L = torch.linalg.cholesky(Σ)
+L_inv = torch.linalg.cholesky(K)
+
+λ, v = torch.linalg.eig(L_inv)
+print(λ.real)
+```
+
+## Learning the Cholesky Decomposition
 
 ```python
+import torch
+import matplotlib.pyplot as plt
+
+plt.style.use("seaborn-v0_8-paper")
+
 from torchlft.scripts.train import parser, main
 ```
 
 ```python
-config = {
-    "model":
-    {
-        "class_path": "torchlft.model_zoo.cholesky.Model",
-        "init_args": {
-            "lattice_length": 12,
-            "lattice_dim": 2,
-            "m_sq": 0.25,
-        },
-    },
-    "train": {
-        "class_path": "classes.Trainer",
-        "init_args": {
-            "n_steps": 2000,
-            "batch_size": 2000,
-            "init_lr": 0.005,
-        }
-    },
-    "cuda": False,# torch.cuda.is_available(),
-}
-config = parser.parse_object(config)
-print(parser.dump(config))
+config = """
+model:
+  class_path: torchlft.model_zoo.gaussian.TriangularLinearModel
+  init_args: 
+    target:
+      lattice_length: {L}
+      lattice_dim: {d}
+      m_sq: {m_sq}
+
+train:
+    n_steps: 2000
+    batch_size: 2000
+    init_lr: 0.005
+    display_metrics: false
+
+output: false
+"""
+config = parser.parse_string(config.format(L=12, d=2, m_sq=0.25))
+print(parser.dump(config, skip_none=False))
 ```
 
 ```python
-model, logger, train_dir = main(config)
+model, logger = main(config)
 ```
 
 ```python
-[(k, v.shape) for k, v in logger.as_dict().items()]
+metrics = logger.get_data()
 
-steps = logger.steps
-metrics = logger.as_dict()
+print([(k, v.shape) for k, v in metrics.items()])
 
-fig, axes = plt.subplots(2, 2, sharex=True, figsize=(6, 5))
+steps = metrics["steps"]
+kl_div = -metrics["mlw"]
+one_minus_ess = 1 - metrics["ess"]
+one_minus_acc = 1 - metrics["acc"]
+vlw = metrics["vlw"]
 
-for ax, (label, tensor) in zip(axes.flatten(), metrics.items()):
-    ax.errorbar(steps, tensor.mean(dim=1), yerr=tensor.std(dim=1))
-    ax.set_title(label)
+def plot(ax, tensor):
+    q = torch.tensor([0.0, 1.0], dtype=tensor.dtype)
+    ax.fill_between(steps, *tensor.quantile(q, dim=1), alpha=0.5)
+    ax.plot(steps, tensor.quantile(0.5, dim=1))
+    ax.set_yscale("log")
+
+fig, axes = plt.subplots(2, 2, sharex=True, figsize=(8, 6))
+
+axes = iter(axes.flatten())
+
+
+ax = next(axes)
+plot(ax, kl_div)
+ax.set_title("KL Divergence")
+
+ax = next(axes)
+plot(ax, one_minus_acc)
+ax.set_title("1 - Acceptance")
+
+ax = next(axes)
+plot(ax, one_minus_ess)
+ax.set_title("1 - ESS")
+
+ax = next(axes)
+plot(ax, vlw)
+ax.set_title("Var log weights")
+
+fig.tight_layout()
 ```
 
 ```python
-expected_weights = model.cholesky
-empirical_weights = model.linear.get_weight().detach()
+expected_weights = model.target.cholesky
+empirical_weights = model.transform.get_weight().detach()
 
 fig, axes = plt.subplots(1, 3, figsize=(9, 3))
 axes[0].imshow(expected_weights)
@@ -351,15 +423,15 @@ axes[2].imshow(empirical_weights - expected_weights)
 ```
 
 ```python
-from torchlft.nflow.utils import get_jacobian
+from torchlft.nflow.utils import get_model_jacobian
 
-jac, input, output = get_jacobian(model)
+jac, inputs, outputs = get_model_jacobian(model, 1)
 
-assert torch.allclose(jac, empirical_weights)
+assert torch.allclose(jac.squeeze(0), empirical_weights)
 ```
 
 ```python
-expected_cov = model.covariance
+expected_cov = model.target.covariance
 
 sample, weights = model.weighted_sample(10000)
 
@@ -373,6 +445,8 @@ sample, indices = model.metropolis_sample(10000)
 indices = indices.tolist()
 print("Acceptance: ", len(set(indices)) / len(indices))
 ```
+
+## Learning rate annealing
 
 ```python
 

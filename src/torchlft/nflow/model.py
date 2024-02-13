@@ -1,4 +1,6 @@
 from abc import ABCMeta, abstractmethod
+from math import exp
+from random import random
 from typing import NamedTuple, TypeAlias
 
 import torch
@@ -6,10 +8,9 @@ import torch.nn as nn
 
 from torchlft.utils.torch import tuple_concat
 
+
 Tensor: TypeAlias = torch.Tensor
 
-from math import exp
-from random import random
 
 def metropolis_hastings(log_weights: Tensor):
     assert log_weights.squeeze().dim() == 1
@@ -61,9 +62,9 @@ class Model(nn.Module, metaclass=ABCMeta):
     def forward(
         self, batch_size: int
     ) -> tuple["Model.Fields", "Model.Actions"]:
-        inputs, base_action = self.base(batch_size)
+        inputs, base_action = self.sample_base(batch_size)
         outputs, log_det_jacobian = self.flow_forward(inputs)
-        target_action = self.target(outputs)
+        target_action = self.compute_target(outputs)
 
         pushforward = base_action + log_det_jacobian
         pullback = target_action - log_det_jacobian
@@ -76,7 +77,9 @@ class Model(nn.Module, metaclass=ABCMeta):
         return fields, actions
 
     @torch.no_grad()
-    def weighted_sample(self, batch_size: int, n_batches: int = 1) -> tuple[Tensor, Tensor]:
+    def weighted_sample(
+        self, batch_size: int, n_batches: int = 1
+    ) -> tuple[Tensor, Tensor]:
         sample = []
         for _ in range(n_batches):
             fields, actions = self(batch_size)
@@ -86,11 +89,12 @@ class Model(nn.Module, metaclass=ABCMeta):
         return tuple_concat(sample)
 
     @torch.no_grad()
-    def metropolis_sample(self, batch_size: int, n_batches: int = 1) -> tuple[Tensor, Tensor]:
+    def metropolis_sample(
+        self, batch_size: int, n_batches: int = 1
+    ) -> tuple[Tensor, Tensor]:
         outputs, log_weights = self.weighted_sample(batch_size, n_batches)
         indices = metropolis_hastings(log_weights)
         return (outputs, indices)
-
 
     @abstractmethod
     def flow_forward(
@@ -99,14 +103,14 @@ class Model(nn.Module, metaclass=ABCMeta):
         ...
 
     @abstractmethod
-    def base(
+    def sample_base(
         self,
         batch_size: int,
     ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
         ...
 
     @abstractmethod
-    def target(
+    def compute_target(
         self,
         inputs: tuple[Tensor, ...],
     ) -> Tensor:

@@ -3,7 +3,7 @@ from typing import Any, Callable, TypeAlias
 
 import torch
 
-# from auxflows.utils import mod_2pi
+from torchlft.utils.tensor import mod_2pi
 
 Tensor: TypeAlias = torch.Tensor
 Transform: TypeAlias = Callable[[Tensor, Any, ...], tuple[Tensor, Tensor]]
