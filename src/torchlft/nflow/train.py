@@ -107,6 +107,7 @@ class ReverseKLTrainer(Trainer):
         _ = model(1)
         if self.print_model_summary:
             print(model)  # log?
+            print(f"Trainable parameters: {model.parameter_count}")
 
         with trange(
             self.n_steps + 1,

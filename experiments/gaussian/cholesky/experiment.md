@@ -48,12 +48,12 @@ plt.style.use("seaborn-v0_8-paper")
 $$
 \delta^2_{1d} = \begin{aligned}
     \begin{pmatrix}
-    2 & -1 & 0 & \ldots &  & -1\\
-    -1 & 2 & -1 & &  \\
-    0 & -1 & 2 & -1 &  \\
+    -2 & 1 & 0 & \ldots &  & 1\\
+    1 & -2 & 1 & &  \\
+    0 & 1 & -2 & 1 &  \\
     \vdots & & \ddots & \ddots & \ddots \\
     \\
-    -1 & & & & -1 & 2
+    1 & & & & 1 & -2
 	\end{pmatrix}
 \end{aligned}
 $$
@@ -89,12 +89,10 @@ plt.plot(Σ[0])  # TODO mean for each shift, plot, show correlation length is 1/
 l = 4
 M = torch.arange(l**2).view(l, l) + 1
 L = M.tril()
+δ_sq = -laplacian(l, 1)
 Id = torch.eye(l)
 
-out = torch.kron(torch.eye(4), L)
-out2 = torch.kron(L, torch.eye(4))
-
-fig, axes = plt.subplots(2, 3, figsize=(9, 6))
+fig, axes = plt.subplots(3, 3, figsize=(12, 9))
 
 axes[0, 0].imshow(M)
 axes[0, 1].imshow(torch.kron(Id, M))
@@ -102,9 +100,36 @@ axes[0, 2].imshow(torch.kron(M, Id))
 axes[1, 0].imshow(L)
 axes[1, 1].imshow(torch.kron(Id, L))
 axes[1, 2].imshow(torch.kron(L, Id))
+axes[2, 0].imshow(δ_sq)
+axes[2, 1].imshow(torch.kron(Id, δ_sq))
+axes[2, 2].imshow(torch.kron(δ_sq, Id))
 ```
 
 ### Building a two dimensional action
+
+
+Kronecker product
+
+$$
+\begin{aligned}
+    \delta^2_{2d} 
+    = \delta^2_{1d} \otimes \mathbf{1} + \mathbf{1} \otimes \delta^2_{1d}
+    = \begin{pmatrix}
+    \delta^2_{1d} - 2 \mathbf{1} & -\mathbf{1} & \mathbf{0} & \ldots &  & -\mathbf{1}\\
+    -\mathbf{1} & \delta^2_{1d} - 2 \mathbf{1} & -\mathbf{1} & &  \\
+    \mathbf{0} & -\mathbf{1} & \delta^2_{1d} - 2 \mathbf{1} & -\mathbf{1} &  \\
+    \vdots & & \ddots & \ddots & \ddots \\
+    \\
+    -\mathbf{1} & & & & -\mathbf{1} & \delta^2_{1d} - 2 \mathbf{1}
+	\end{pmatrix}
+\end{aligned}
+$$
+
+```python
+print(torch.kron(Id, δ_sq).int())
+print(torch.kron(δ_sq, Id).int())
+#laplacian(4, 2).int()
+```
 
 ```python
 from torchlft.utils.lattice import restore_geometry_2d
@@ -270,7 +295,7 @@ $$
 We used that  $|\Sigma^{-1}| = |L^{-1}|^2$ and $|c A| = c^D |A|$ for an $D \times D$ matrix.
 
 ```python
-l = 8
+l = 4
 D = l * l
 m_sq = 0.5
 
@@ -278,6 +303,8 @@ K = -laplacian(l, 2) + m_sq * torch.eye(D)
 Σ = torch.linalg.inv(K)
 L = torch.linalg.cholesky(Σ)
 L_inv = torch.linalg.cholesky(K)
+
+#print(L)
 
 print("Doesn't seem to be unique! Inv[Chol[K]] =/= Chol[Inv[K]]")
 print((L_inv - torch.linalg.inv(L)).abs().max())
@@ -331,7 +358,36 @@ L = torch.linalg.cholesky(Σ)
 L_inv = torch.linalg.cholesky(K)
 
 λ, v = torch.linalg.eig(L_inv)
-print(λ.real)
+print(λ)
+```
+
+Is this equivariant under translations?
+
+No!
+
+```python
+l = 4
+D = l * l
+m_sq = 0.1
+
+K = -laplacian(l, 2) + m_sq * torch.eye(D)
+Σ = torch.linalg.inv(K)
+L = torch.linalg.cholesky(Σ)
+L_inv = torch.linalg.cholesky(K)
+
+z = torch.empty(l, l).normal_()
+
+φ_1 = torch.mv(L, z.flatten()).view(l, l)
+
+φ_2 = torch.mv(L, z.roll(1, 0).flatten()).view(l, l).roll(-1, 0)
+
+print(φ_1)
+print(φ_2)
+
+φ_1 = φ_1.flatten()
+φ_2 = φ_2.flatten()
+print(torch.dot(φ_1, torch.mv(K, φ_1)))
+print(torch.dot(φ_2, torch.mv(K, φ_2)))
 ```
 
 ## Learning the Cholesky Decomposition

@@ -59,6 +59,10 @@ class Model(nn.Module, metaclass=ABCMeta):
     def dtype(self) -> torch.dtype:
         return self._dummy_buffer.dtype
 
+    @property
+    def parameter_count(self) -> int:
+        return sum(tensor.numel() for tensor in self.parameters())
+
     def forward(
         self, batch_size: int
     ) -> tuple["Model.Fields", "Model.Actions"]:

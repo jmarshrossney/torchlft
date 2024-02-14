@@ -6,12 +6,12 @@ import torch
 import torch.nn as nn
 from jsonargparse.typing import PositiveInt
 
+from torchlft.nflow.layer import Composition
 from torchlft.nflow.nn import DenseNet
 from torchlft.nflow.transforms.core import UnivariateTransformModule
 from torchlft.nflow.transforms.affine import affine_transform
 from torchlft.nflow.transforms.wrappers import sum_log_gradient
-from torchlft.nflow.utils import Composition
-from torchlft.lattice.scalar.layers import LegacyCouplingLayer
+from torchlft.lattice.scalar.layers import DenseCouplingLayer
 from torchlft.utils.lattice import checkerboard_mask
 
 from torchlft.model_zoo.gaussian.core import GaussianModel, Target
@@ -28,6 +28,14 @@ class AffineTransformModule:
 
     def build(self):
         AffineTransform = affine_transform(**asdict(self))
+
+        """
+        from torchlft.nflow.nn import Activation
+        net = DenseNet(sizes=[64], activation=Activation.tanh)
+        net = net.build()
+        net.append(nn.LazyLinear(AffineTransform.n_params))
+        """
+
         transform_module = UnivariateTransformModule(
             transform_cls=AffineTransform,
             context_fn=nn.Identity(),
@@ -52,7 +60,7 @@ class DenseCouplingFlow:
             ) * transform_module.transform_cls.n_params
             net = self.net.build()
             net.append(nn.LazyLinear(size_out))
-            layer = LegacyCouplingLayer(transform_module, net, layer_id)
+            layer = DenseCouplingLayer(transform_module, net, layer_id)
             layers.append(layer)
 
         return Composition(*layers)

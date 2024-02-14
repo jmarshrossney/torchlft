@@ -10,20 +10,16 @@ from torchlft.nflow.nn import ConvNet2d, PointNet
 from torchlft.nflow.transforms.core import UnivariateTransformModule
 from torchlft.nflow.transforms.affine import affine_transform
 from torchlft.nflow.transforms.wrappers import sum_log_gradient
-from torchlft.lattice.scalar.layers import ConvCouplingLayer
+from torchlft.lattice.scalar.layers import CouplingLayer
 
 from torchlft.model_zoo.gaussian.core import GaussianModel, Target
 
 Tensor: TypeAlias = torch.Tensor
 
 
-def _default_point_net():
-    return PointNet(channels=[], activation="identity")
-
-
 @dataclass(kw_only=True)
 class AffineTransformModule:
-    net: PointNet = field(default_factory=_default_point_net)
+    net: PointNet
     scale_fn: str = "exponential"
     symmetric: bool = False
     shift_only: bool = False
@@ -44,9 +40,9 @@ class AffineTransformModule:
 
 
 @dataclass
-class ConvCouplingFlow:
+class CouplingFlow:
     transform: AffineTransformModule
-    net: ConvNet2d
+    radius: PositiveInt
     n_blocks: PositiveInt
 
     def build(self):
@@ -54,8 +50,7 @@ class ConvCouplingFlow:
 
         for layer_id in range(2 * self.n_blocks):
             transform_module = self.transform.build()
-            net = self.net.build()
-            layer = ConvCouplingLayer(transform_module, net, layer_id)
+            layer = CouplingLayer(transform_module, self.radius, layer_id)
 
             layers.append(layer)
 
@@ -66,11 +61,11 @@ class Target2d(Target):
     lattice_dim = 2
 
 
-class ConvCouplingModel(GaussianModel):
+class CouplingModel(GaussianModel):
     def __init__(
         self,
         target: Target,
-        flow: ConvCouplingFlow,
+        flow: CouplingFlow,
     ):
         super().__init__(target)
 

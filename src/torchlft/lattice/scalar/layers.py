@@ -3,15 +3,82 @@ from typing import TypeAlias
 import torch
 import torch.nn as nn
 
+from torchlft.nflow.layer import Layer
+from torchlft.nflow.nn import permuted_conv2d
 from torchlft.nflow.partition import Checkerboard2d
 from torchlft.nflow.transforms.core import UnivariateTransformModule
 from torchlft.utils.linalg import mv
+from torchlft.utils.lattice import checkerboard_mask
 
 
 Tensor: TypeAlias = torch.Tensor
 
 
-class CouplingLayer(nn.Module):
+class CouplingLayer(Layer):
+    def __init__(
+        self,
+        transform: UnivariateTransformModule,
+        radius: int,
+        layer_id: int,
+    ):
+        super().__init__()
+
+        partitioning = Checkerboard2d(partition_id=layer_id)
+        self.register_module("partitioning", partitioning)
+
+        self.register_module("transform", transform)
+
+        # With shifts
+        K = 2 * radius + 1
+        shifts = torch.stack(
+            torch.meshgrid(
+                torch.arange(-radius, radius + 1),
+                torch.arange(-radius, radius + 1),
+                indexing="xy",
+            ),
+            dim=-1,
+        )
+        checker = checkerboard_mask([K + 1, K + 1], offset=1)[:-1, :-1]
+        shifts = shifts[checker]
+        self.shifts = shifts.tolist()
+
+        # With conv
+        elements = torch.zeros(K, K, dtype=torch.long).masked_scatter(
+            checker, torch.arange(1, K**2 // 2 + 1)
+        )
+        kernels = nn.functional.one_hot(elements)[..., 1:]
+        self.register_buffer("kernels", kernels.float())
+
+    def forward(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
+        # Get active and frozen masks
+        _, L, T, _ = φ_in.shape
+        active_mask, frozen_mask = self.partitioning(dimensions=(L, T))
+
+        # Construct conditional transformation
+        #context = frozen_mask.unsqueeze(-1) * φ_in
+        
+        #kernels = self.kernels.unsqueeze(-1).expand(-1, -1, -1, context.shape[-1])
+        #context = permuted_conv2d(context, kernels)
+
+        # Stack context within receptive field
+        #context = torch.cat(
+        #    [context.roll(shift, (1, 2)) for shift in self.shifts],
+        #    dim=-1,
+        #)
+
+        #context = context[:, active_mask]
+
+
+        transform = self.transform(context)
+
+        # Transform active variables
+        φ_out = φ_in.clone()
+        φ_out[:, active_mask], ldj = transform(φ_in[:, active_mask])
+
+        return φ_out, ldj
+
+
+class ConvCouplingLayer(Layer):
     def __init__(
         self,
         transform: UnivariateTransformModule,
@@ -43,7 +110,7 @@ class CouplingLayer(nn.Module):
         return φ_out, ldj
 
 
-class UpscalingLayer(nn.Module):
+class UpscalingLayer(Layer):
     def forward(self, φ_in: Tensor) -> tuple[Tensor, Tensor]:
         _, L, T, n = φ_in.shape
         assert n % 4 == 0
@@ -51,7 +118,7 @@ class UpscalingLayer(nn.Module):
         # TODO: see https://github.com/marshrossney/multilevel-flow-experiments/blob/basic-multilevel/notebooks/basic_multilevel.ipynb
 
 
-class LegacyCouplingLayer(nn.Module):
+class DenseCouplingLayer(Layer):
     def __init__(
         self,
         transform: UnivariateTransformModule,
@@ -85,6 +152,7 @@ class LegacyCouplingLayer(nn.Module):
 
         # Construct conditional transformation
         context = self.net(φ_p).view(*φ_a.shape, -1)
+        #context = φ_p.unsqueeze(1).expand(-1, D // 2, -1)
         transform = self.transform(context)
 
         # Transform active variables
@@ -95,7 +163,7 @@ class LegacyCouplingLayer(nn.Module):
         return φ_out, ldj
 
 
-class TriangularLinearLayer(nn.Module):
+class TriangularLinearLayer(Layer):
     def __init__(self, size: int):
         super().__init__()
         D = size

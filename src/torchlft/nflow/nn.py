@@ -5,7 +5,6 @@ import warnings
 
 import torch.nn as nn
 
-
 warnings.filterwarnings("ignore", message="Lazy")
 
 
@@ -65,6 +64,25 @@ def permute_io(net: nn.Module, spatial_dims: int) -> nn.Module:
     net.register_forward_hook(permute_output)
 
     return net
+
+
+def permuted_conv2d(input, weight):
+
+    K1, K2, _, _ = weight.shape
+    assert K1 == K2
+    assert K1 % 2 == 1
+    r = (K1 - 1) // 2
+    
+    input = input.permute(0, 3, 1, 2)
+    input = nn.functional.pad(input, (r, r, r, r), "circular")
+
+    weight = weight.permute(2, 3, 0, 1)
+    
+    return nn.functional.conv2d(
+        input,
+        weight,
+        padding="valid",
+    ).permute(0, 2, 3, 1)
 
 
 @dataclass(kw_only=True)
