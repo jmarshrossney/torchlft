@@ -65,18 +65,27 @@ laplacian(6, 1)
 ```
 
 ```python
-L = 12
-m_sq = 0.5
+l = 8
+m_sq = 0.25
 
-K = -laplacian(L, 1) + m_sq * torch.eye(L)
+K = -laplacian(l, 1) + m_sq * torch.eye(l)
 Σ = torch.linalg.inv(K)
+L = torch.linalg.cholesky(Σ)
+L_inv = torch.linalg.cholesky(K)
 
-fig, axes = plt.subplots(1, 2, figsize=(6, 6))
+fig, axes = plt.subplots(1, 4, figsize=(12, 12))
 axes[0].set_title("Precision")
 axes[1].set_title("Covariance")
+axes[2].set_title("Cholesky/Cov")
+axes[3].set_title("Cholesky/Prec")
 
 axes[0].imshow(K)
 axes[1].imshow(Σ)
+axes[2].imshow(L)
+axes[3].imshow(L_inv)
+
+print(L)
+print(L_inv)
 ```
 
 ```python
@@ -233,6 +242,20 @@ k_hat = (k / 2).sin().pow(2) * 4
 
 ```
 
+```python
+import torch
+from torch.fft import fft, rfft, rfft2
+
+L = 8
+x = torch.randn(L, L)
+
+y1 = rfft2(x)
+y2 = fft(rfft(x, dim=1), dim=0)
+
+print(y1 - y2)
+#print(y2)
+```
+
 The DFT transforms real-valued fields into complex Hermitean fields in Fourier space.
 
 But we want to deal with real vectors $\underline{\phi} \in \mathbb{R}^{D}$ with $D = \lvert\Lambda\rvert$.
@@ -306,7 +329,7 @@ L_inv = torch.linalg.cholesky(K)
 
 #print(L)
 
-print("Doesn't seem to be unique! Inv[Chol[K]] =/= Chol[Inv[K]]")
+print("Doesn't seem to round trip..? Inv[Chol[K]] =/= Chol[Inv[K]]")
 print((L_inv - torch.linalg.inv(L)).abs().max())
 
 # NOTE: L L^\top here rather than L^\top L
@@ -390,6 +413,35 @@ print(torch.dot(φ_1, torch.mv(K, φ_1)))
 print(torch.dot(φ_2, torch.mv(K, φ_2)))
 ```
 
+Spectrum of Choleksy versus Covariance
+
+```python
+l = 8
+D = l * l
+m_sq = 0.25
+
+K = -laplacian(l, 2) + m_sq * torch.eye(D)
+Σ = torch.linalg.inv(K)
+L = torch.linalg.cholesky(Σ)
+L_inv = torch.linalg.cholesky(K)
+
+
+λ_chol = torch.linalg.eigvals(L).real
+λ_chol, _ = λ_chol.sort()
+
+cov = Σ
+λ_cov = torch.linalg.eigvals(cov).real
+λ_cov, _ = λ_cov.sort()
+
+D = len(λ_cov)
+
+fig, ax = plt.subplots()
+ax.plot(range(D), λ_chol, "o--", label="chol")
+ax.plot(range(D), λ_cov.sqrt(), "o--", label="cov")
+
+ax.legend()
+```
+
 ## Learning the Cholesky Decomposition
 
 ```python
@@ -419,7 +471,7 @@ train:
 
 output: false
 """
-config = parser.parse_string(config.format(L=12, d=2, m_sq=0.25))
+config = parser.parse_string(config.format(L=8, d=2, m_sq=0.25))
 print(parser.dump(config, skip_none=False))
 ```
 
@@ -453,15 +505,15 @@ ax = next(axes)
 plot(ax, kl_div)
 ax.set_title("KL Divergence")
 
-ax = next(axes)
+#ax = next(axes)
 plot(ax, one_minus_acc)
 ax.set_title("1 - Acceptance")
 
-ax = next(axes)
+#ax = next(axes)
 plot(ax, one_minus_ess)
 ax.set_title("1 - ESS")
 
-ax = next(axes)
+#ax = next(axes)
 plot(ax, vlw)
 ax.set_title("Var log weights")
 
@@ -469,13 +521,95 @@ fig.tight_layout()
 ```
 
 ```python
+metrics = logger.get_data()
+
+print([(k, v.shape) for k, v in metrics.items()])
+
+steps = metrics["steps"]
+kl_div = -metrics["mlw"]
+one_minus_ess = 1 - metrics["ess"]
+one_minus_acc = 1 - metrics["acc"]
+vlw = metrics["vlw"]
+
+def plot(ax, tensor, colour):
+    q = torch.tensor([0.25, 0.75], dtype=tensor.dtype)
+    fb = ax.fill_between(steps, *tensor.quantile(q, dim=1), color=colour, alpha=0.5)
+    l, = ax.plot(steps, tensor.quantile(0.5, dim=1), color=colour, linestyle="--")
+    return (fb, l)
+
+fig, ax = plt.subplots(figsize=(6, 4))
+
+#axes = iter(axes.flatten())
+
+handles = []
+labels = []
+
+handle = plot(ax, kl_div, "tab:blue")
+handles.append(handle)
+labels.append("KL Divergence")
+
+handle = plot(ax, one_minus_acc, "tab:orange")
+handles.append(handle)
+labels.append("1 - Acceptance")
+
+handle = plot(ax, one_minus_ess, "tab:green")
+handles.append(handle)
+labels.append("1 - ESS")
+
+handle = plot(ax, vlw, "tab:red")
+handles.append(handle)
+labels.append(r"Variance of $\log (p_\theta / p^\ast)$")
+
+ax.set_yscale("log")
+ax.set_ylim(1e-3, 10)
+
+ax.set_xlabel("Training step")
+
+ax.legend(handles, labels)
+
+fig.tight_layout
+
+fig.savefig("training.png", dpi=300)
+```
+
+```python
 expected_weights = model.target.cholesky
 empirical_weights = model.transform.get_weight().detach()
 
 fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+
+axes[0].set_axis_off()
+
 axes[0].imshow(expected_weights)
 axes[1].imshow(empirical_weights)
 axes[2].imshow(empirical_weights - expected_weights)
+```
+
+```python
+expected_weights = model.target.cholesky
+empirical_weights = model.transform.get_weight().detach()
+
+fig, axes = plt.subplots(1, 3, figsize=(8, 3))
+
+axes[0].set_axis_off()
+axes[0].set_title(r"$L_\theta$")
+axes[1].set_axis_off()
+axes[1].set_title(r"$L_\theta - L_\ast$")
+axes[2].set_yticks([])
+axes[2].set_yticklabels([])
+axes[2].set_xlim(-0.0035, 0.0035)
+axes[2].set_xlabel(r"$L_\theta - L_\ast$")
+
+axes[0].imshow(empirical_weights)
+axes[1].imshow(empirical_weights - expected_weights)
+axes[2].hist((empirical_weights - expected_weights)[model.transform.mask], bins=35)
+
+fig.tight_layout()
+fig.savefig("cholesky_heatmaps.png", dpi=300)
+```
+
+```python
+_ = plt.hist((empirical_weights - expected_weights).flatten(), bins=25)
 ```
 
 ```python

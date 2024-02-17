@@ -20,54 +20,34 @@ Tensor: TypeAlias = torch.Tensor
 
 
 @dataclass(kw_only=True)
-class AffineTransformModule:
-    scale_fn: str = "exponential"
-    symmetric: bool = False
-    shift_only: bool = False
-    rescale_only: bool = False
+class ShiftTransformModule:
 
     def build(self):
-        AffineTransform = affine_transform(**asdict(self))
-
-        """
-        from torchlft.nflow.nn import Activation
-        net = DenseNet(sizes=[64], activation=Activation.tanh)
-        net = net.build()
-        net.append(nn.LazyLinear(AffineTransform.n_params))
-        """
-
-        transform_module = UnivariateTransformModule(
-            transform_cls=AffineTransform,
-            context_fn=nn.Identity(),
-            wrappers=[sum_log_gradient],
-        )
         return transform_module
 
 
 @dataclass
-class DenseCouplingFlow:
-    transform: AffineTransformModule
-    net: DenseNet
-    n_blocks: PositiveInt
-    final_layer_bias: bool = True
-    final_diagonal_layer: bool = False
+class LinearCouplingFlow:
+    transform: ShiftTransformModule
+    n_layers: PositiveInt
 
     def build(self, lattice_size: int):
         layers = []
 
-        for layer_id in range(2 * self.n_blocks):
-            transform_module = self.transform.build()
-            size_out = (
-                lattice_size // 2
-            ) * transform_module.transform_cls.n_params
-            net = self.net.build()
-            net.append(nn.LazyLinear(size_out, bias=self.final_layer_bias))
-            layer = DenseCouplingLayer(transform_module, net, layer_id)
+        for layer_id in range(self.n_layers):
+            transform_module = UnivariateTransformModule(
+                transform_cls=affine_transform(shift_only=True),
+                context_fn=nn.Identity(),
+                wrappers=[sum_log_gradient],
+            )
+
+            linear = nn.LazyLinear(lattice_size // 2, bias=False)
+
+            layer = DenseCouplingLayer(transform_module, linear, layer_id)
+
             layers.append(layer)
 
-        if self.final_diagonal_layer:
-            layer = DiagonalLinearLayer(lattice_size)
-            layers.append(layer)
+        layers.append(DiagonalLinearLayer(lattice_size))
 
         return Composition(*layers)
 
@@ -96,11 +76,11 @@ class ValidPartitioning(StrEnum):
             return torch.randperm(D)
 
 
-class DenseCouplingModel(GaussianModel):
+class LinearCouplingModel(GaussianModel):
     def __init__(
         self,
         target: Target,
-        flow: DenseCouplingFlow,
+        flow: LinearCouplingFlow,
         partitioning: ValidPartitioning,
     ):
         super().__init__(target)

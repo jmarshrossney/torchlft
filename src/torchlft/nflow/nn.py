@@ -90,6 +90,7 @@ class ConvNet2d:
     channels: list[int]
     activation: Activation
     kernel_radius: int | list[int]
+    bias: bool
 
     def __post_init__(self):
         if isinstance(self.kernel_radius, int):
@@ -98,7 +99,7 @@ class ConvNet2d:
     def build(self):
         conv_layers = [
             nn.LazyConv2d(
-                n, kernel_size=(2 * r + 1), padding=r, padding_mode="circular"
+                n, kernel_size=(2 * r + 1), padding=r, padding_mode="circular", bias=self.bias
             )
             for n, r in zip(self.channels, self.kernel_radius, strict=True)
         ]
@@ -114,6 +115,7 @@ class ConvNet1d:
     channels: list[int]
     activation: Activation
     kernel_radius: int | list[int]
+    bias: bool
 
     def __post_init__(self):
         if isinstance(self.kernel_radius, int):
@@ -122,7 +124,7 @@ class ConvNet1d:
     def build(self):
         conv_layers = [
             nn.LazyConv1d(
-                n, kernel_size=(2 * r + 1), padding=r, padding_mode="circular"
+                n, kernel_size=(2 * r + 1), padding=r, padding_mode="circular", bias=self.bias
             )
             for n, r in zip(self.channels, self.kernel_radius, strict=True)
         ]
@@ -137,9 +139,10 @@ class ConvNet1d:
 class DenseNet:
     sizes: list[int]
     activation: Activation
+    bias: bool = True
 
     def build(self):
-        linear_layers = [nn.LazyLinear(n) for n in self.sizes]
+        linear_layers = [nn.LazyLinear(n, bias=self.bias) for n in self.sizes]
         activations = [self.activation() for _ in linear_layers]
         layers = list(chain(*zip(linear_layers, activations)))
         net = nn.Sequential(*layers)

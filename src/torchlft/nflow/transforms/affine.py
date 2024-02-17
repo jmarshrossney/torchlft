@@ -30,15 +30,18 @@ def affine_transform(
         n_params = 1
 
         def handle_params(params: Tensor) -> Tensor:
-            return torch.cat([torch.zeros_like(params), params], dim=-1)
+            return torch.cat([torch.ones_like(params), params], dim=-1)
 
     else:
         if scale_fn == "exponential":
             scale_fn = lambda s: torch.exp(-s)  # noqa E731
         elif scale_fn == "softplus":
-            scale_fn = lambda s: torch.softplus(s, beta=log(2))  # noqa E731
+            scale_fn = lambda s: torch.nn.functional.softplus(-s, beta=log(2))  # noqa E731
+
         if symmetric:
-            scale_fn = lambda s: scale_fn(s) + scale_fn(-s)  # noqa E731
+            raise Exception("this is bad")
+            _scale_fn = scale_fn
+            scale_fn = lambda s: _scale_fn(s.abs())# + _scale_fn(-s))  # noqa E731
 
         if rescale_only:
             n_params = 1

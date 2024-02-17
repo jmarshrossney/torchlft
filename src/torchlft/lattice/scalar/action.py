@@ -36,6 +36,7 @@ class GaussianAction(nn.Module):
         self.lattice_length = L
         self.lattice_dim = d
         self.lattice_size = D
+        self.m_sq = m_sq
         self.log_norm = 0.5 * D * log(2 * π) + log_abs_det_C
 
         self.register_buffer("kernel", K)

@@ -1,3 +1,4 @@
+from math import log
 from typing import TypeAlias
 
 import torch
@@ -163,6 +164,31 @@ class DenseCouplingLayer(Layer):
         return φ_out, ldj
 
 
+class GlobalRescalingLayer(Layer):
+    def __init__(self, size: int):
+        super().__init__()
+        scale = torch.zeros(1)
+        self.register_parameter("scale", nn.Parameter(scale))
+
+    def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
+        σ = torch.nn.functional.softplus(self.scale, beta=log(2))
+        φ = σ * z
+        log_det_dφdz = σ.log().sum().expand(φ.shape[0])
+        return φ, log_det_dφdz
+
+class DiagonalLinearLayer(Layer):
+    def __init__(self, size: int):
+        super().__init__()
+        weight = torch.zeros(size)
+        self.register_parameter("weight", nn.Parameter(weight))
+
+    def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
+        D = torch.nn.functional.softplus(self.weight, beta=log(2))
+        φ = D * z
+        log_det_dφdz = D.log().sum().expand(φ.shape[0], 1)
+        return φ, log_det_dφdz
+
+
 class TriangularLinearLayer(Layer):
     def __init__(self, size: int):
         super().__init__()
@@ -170,6 +196,8 @@ class TriangularLinearLayer(Layer):
 
         weight = torch.empty(D, D).uniform_(0, 1)
         self.register_parameter("weight", nn.Parameter(weight))
+
+        #TODO: diagonal should be positive!
 
         mask = torch.ones(D, D).tril().bool()
         self.register_buffer("mask", mask)
