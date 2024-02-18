@@ -16,7 +16,7 @@ Tensor: TypeAlias = torch.Tensor
 
 
 class GlobalRescalingLayer(Layer):
-    def __init__(self, size: int):
+    def __init__(self):
         super().__init__()
         scale = torch.zeros(1)
         self.register_parameter("scale", nn.Parameter(scale))
@@ -24,7 +24,7 @@ class GlobalRescalingLayer(Layer):
     def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
         σ = torch.nn.functional.softplus(self.scale, beta=log(2))
         φ = σ * z
-        log_det_dφdz = σ.log().sum().expand(φ.shape[0])
+        log_det_dφdz = σ.log().mul(z[0].numel()).expand(φ.shape[0], 1)
         return φ, log_det_dφdz
 
 
@@ -39,6 +39,7 @@ class DiagonalLinearLayer(Layer):
         return torch.diag_embed(diag)
 
     def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
+        assert z.dim() == 2
         D = self.get_weight()
         φ = mv(D, z)
         log_det_dφdz = D.diag().log().sum().expand(φ.shape[0], 1)
@@ -63,6 +64,7 @@ class TriangularLinearLayer(Layer):
         return torch.diag_embed(diag).masked_scatter(self.mask, self.tril)
 
     def forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
+        assert z.dim() == 2
         L = self.get_weight()
         φ = mv(L, z)
         log_det_dφdz = L.diag().log().sum().expand(φ.shape[0], 1)

@@ -43,6 +43,9 @@ class GaussianAction(nn.Module):
         self.register_buffer("covariance", Σ)
         self.register_buffer("cholesky", C)
 
+    def extra_repr(self):
+        return f"lattice_length={self.lattice_length}, lattice_dim={self.lattice_dim}, m_sq={self.m_sq}"
+
     def forward(self, φ: Tensor) -> Tensor:
         K = self.kernel
         S = 0.5 * dot(φ, mv(K, φ))

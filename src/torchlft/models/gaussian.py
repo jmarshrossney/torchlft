@@ -9,6 +9,7 @@ from jsonargparse.typing import (
     restricted_number_type,
 )
 import torch
+import torch.nn as nn
 
 from torchlft.nflow.model import Model as BaseModel
 from torchlft.nflow.layer import Composition
@@ -18,6 +19,7 @@ from torchlft.nflow.transforms.affine import affine_transform
 from torchlft.nflow.transforms.wrappers import sum_log_gradient
 from torchlft.lattice.scalar.action import GaussianAction
 from torchlft.lattice.scalar.layers import (
+    GlobalRescalingLayer,
     DiagonalLinearLayer,
     TriangularLinearLayer,
     DenseCouplingLayer,
@@ -210,7 +212,7 @@ class EquivLinearCouplingFlow:
 
             layers.append(layer)
 
-        layers.append(DiagonalLinearLayer(lattice_size))
+        layers.append(GlobalRescalingLayer())
 
         return Composition(*layers)
 
@@ -224,11 +226,15 @@ class EquivLinearCouplingModel(GaussianModel):
         assert target.lattice_dim == 2
         super().__init__(target)
 
-        self.register_module("flow", flow.build())
+        self.register_module("flow", flow.build(self.target.lattice_size))
+
+    def sample_base(self, batch_size: int) -> tuple[Tensor, Tensor]:
+        L = self.target.lattice_length
+        z, minus_log_q = super().sample_base(batch_size)
+        return z.view(-1, L, L, 1), minus_log_q
+
+    def compute_target(self, φ: Tensor) -> Tensor:
+        return super().compute_target(φ.flatten(start_dim=1))
 
     def flow_forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
-        L = self.target.lattice_length
-        z = z.view(-1, L, L, 1)
-        φ, log_det_dφdz = self.flow(z)
-        φ = φ.flatten(start_dim=1)
-        return φ, log_det_dφdz
+        return self.flow(z)

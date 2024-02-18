@@ -447,18 +447,14 @@ ax.legend()
 ## Learning the Cholesky Decomposition
 
 ```python
-import torch
-import matplotlib.pyplot as plt
-
-plt.style.use("seaborn-v0_8-paper")
-
 from torchlft.scripts.train import parser, main
+from plot import plot_metrics
 ```
 
 ```python
-config = """
+config_str = """
 model:
-  class_path: torchlft.model_zoo.gaussian.TriangularLinearModel
+  class_path: torchlft.models.gaussian.TriangularLinearModel
   init_args: 
     target:
       lattice_length: {L}
@@ -473,16 +469,12 @@ train:
 
 output: false
 """
-config = parser.parse_string(config.format(L=8, d=2, m_sq=0.25))
+config = parser.parse_string(config_str.format(L=8, d=2, m_sq=0.25))
 print(parser.dump(config, skip_none=False))
 ```
 
 ```python
 model, logger = main(config)
-```
-
-```python
-from plot import plot_metrics
 
 fig = plot_metrics(logger)
 ```
@@ -554,4 +546,40 @@ _ = plt.hist((expected_cov - empirical_cov).flatten(), bins=25)
 sample, indices = model.metropolis_sample(10000)
 indices = indices.tolist()
 print("Acceptance: ", len(set(indices)) / len(indices))
+```
+
+## Correlation Length
+
+```python
+config_str = """
+model:
+  class_path: torchlft.models.gaussian.TriangularLinearModel
+  init_args: 
+    target:
+      lattice_length: {L}
+      lattice_dim: 1
+      m_sq: {m_sq}
+
+train:
+    n_steps: 4000
+    batch_size: 1024
+    init_lr: 0.01
+    display_metrics: false
+
+output: false
+"""
+```
+
+```python
+for ξ in (2, 10, 25):
+
+    config = parser.parse_string(config_str.format(L=100, m_sq=(1 / ξ**2)))
+
+    model, logger = main(config)
+
+    _ = plot_metrics(logger)
+```
+
+```python
+
 ```
