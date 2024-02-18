@@ -63,8 +63,7 @@ class ReverseKLTrainer(Trainer):
     # @abstractmethod
     def configure_optimizers(
         self, model: Model, context: Any = None
-    ) -> tuple[Optimizer, Scheduler]:
-        ...
+    ) -> tuple[Optimizer, Scheduler]: ...
 
     def training_step(self, model: Model, step: int) -> Tensor:
         fields, actions = model(self.batch_size)

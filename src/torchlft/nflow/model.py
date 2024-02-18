@@ -103,19 +103,16 @@ class Model(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def flow_forward(
         self, inputs: tuple[Tensor, ...]
-    ) -> tuple[tuple[Tensor, ...], Tensor]:
-        ...
+    ) -> tuple[tuple[Tensor, ...], Tensor]: ...
 
     @abstractmethod
     def sample_base(
         self,
         batch_size: int,
-    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
-        ...
+    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]: ...
 
     @abstractmethod
     def compute_target(
         self,
         inputs: tuple[Tensor, ...],
-    ) -> Tensor:
-        ...
+    ) -> Tensor: ...

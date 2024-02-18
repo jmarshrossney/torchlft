@@ -11,8 +11,7 @@ class Layer(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def forward(
         self, inputs: Tensor | tuple[Tensor, ...]
-    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
-        ...
+    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]: ...
 
 
 class Composition(Layer):

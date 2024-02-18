@@ -1,7 +1,6 @@
 from typing import TypeAlias
 
 import torch
-import torch.nn as nn
 
 Tensor: TypeAlias = torch.Tensor
 
@@ -13,7 +12,9 @@ def get_jacobian(transform, inputs: Tensor):
         output = output.squeeze(0)
         return output, output
 
-    jac, outputs = torch.vmap(torch.func.jacrev(forward, argnums=0, has_aux=True))(inputs)
+    jac, outputs = torch.vmap(
+        torch.func.jacrev(forward, argnums=0, has_aux=True)
+    )(inputs)
 
     return jac, inputs, outputs
 

@@ -68,7 +68,7 @@ def plot_model_jacobian_vs_covariance(model, batch_size: int = 1):
 
     D = int(sqrt(jac[0].numel()))
     jac = jac.view(-1, D, D)
-    
+
     jac_sq = torch.einsum("bij,bkj-> bik", jac, jac)
     jac_sq = jac_sq.mean(dim=0)
 
@@ -92,6 +92,7 @@ def plot_model_jacobian_vs_covariance(model, batch_size: int = 1):
     ax.set_xlabel(r"$J_\theta J_\theta^\top - \Sigma$")
 
     yield fig
+
 
 def plot_layer_jacobians(model):
     layers = [
@@ -149,7 +150,9 @@ def _plot_layer_ldj(model, ax, batch_size):
     return (iqr, mline)
 
 
-def plot_layer_log_det_jacobians(models: dict[str, Model] | Model, batch_size: int = 64):
+def plot_layer_log_det_jacobians(
+    models: dict[str, Model] | Model, batch_size: int = 64
+):
     # Allow single model
     if isinstance(models, Model):
         models = {"Model": models}
@@ -183,11 +186,10 @@ def plot_layer_log_det_jacobians(models: dict[str, Model] | Model, batch_size: i
 
 
 def plot_jacobian_qr(models: dict[str, Model] | Model):
-    
     # Allow single model
     if isinstance(models, Model):
         models = {"Model": models}
-    
+
     assert (
         len(set([model.target.lattice_length for model in models.values()]))
         == 1
@@ -205,7 +207,6 @@ def plot_jacobian_qr(models: dict[str, Model] | Model):
     handles, labels = [c], ["Cholesky eigvals"]
 
     for label, model in models.items():
-
         jac, _, _ = get_model_jacobian(model, 1)
 
         D = int(sqrt(jac.numel()))

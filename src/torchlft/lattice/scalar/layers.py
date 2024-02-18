@@ -105,7 +105,6 @@ class DenseCouplingLayer(Layer):
 
         # Construct conditional transformation
         context = self.net(φ_p).view(*φ_a.shape, -1)
-        # context = φ_p.unsqueeze(1).expand(-1, D // 2, -1)
         transform = self.transform(context)
 
         # Transform active variables

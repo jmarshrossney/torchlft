@@ -37,8 +37,7 @@ def hook_from_wrapper(wrapper):
 
 class TransformModule(nn.Module, metaclass=ABCMeta):
     @abstractmethod
-    def forward(self, context: Any) -> Transform:
-        ...
+    def forward(self, context: Any) -> Transform: ...
 
 
 class UnivariateTransformModule(TransformModule):

@@ -22,7 +22,13 @@ from torchlft.scripts.train import parser, main
 from torchlft.nflow.utils import get_jacobian, get_model_jacobian
 from torchlft.nflow.layer import Layer
 
-from plot import plot_metrics, plot_model_jacobian_vs_covariance, plot_layer_jacobians, plot_layer_log_det_jacobians, plot_jacobian_qr
+from plot import (
+    plot_metrics,
+    plot_model_jacobian_vs_covariance,
+    plot_layer_jacobians,
+    plot_layer_log_det_jacobians,
+    plot_jacobian_qr,
+)
 
 plt.style.use("seaborn-v0_8-paper")
 
@@ -72,6 +78,7 @@ _LCM_defaults = dict(
     partitioning="lexicographic",
 )
 
+
 def _get_LCM_config(kwargs):
     kwargs = _global_defaults | _LCM_defaults | kwargs
     config = _LCM_config_str.format(**kwargs)
@@ -109,8 +116,9 @@ _NLCM_defaults = dict(
     partitioning="lexicographic",
     sizes=[64],
     activation="tanh",
-    shift_only=False
+    shift_only=False,
 )
+
 
 def _get_NLCM_config(kwargs):
     kwargs = _global_defaults | _NLCM_defaults | kwargs
@@ -146,6 +154,7 @@ _ELCM_defaults = dict(
     radius=1,
 )
 
+
 def _get_ELCM_config(kwargs):
     kwargs = _global_defaults | _ELCM_defaults | kwargs
     config = _ELCM_config_str.format(**kwargs)
@@ -153,9 +162,7 @@ def _get_ELCM_config(kwargs):
 ```
 
 ```python
-def get_config(
-    model: str,
-    **kwargs):
+def get_config(model: str, **kwargs):
     if model == "linear":
         return _get_LCM_config(kwargs)
     elif model == "nonlinear":
@@ -164,6 +171,7 @@ def get_config(
         return _get_ELCM_config(kwargs)
     else:
         print("Model not recognised")
+
 
 _ = get_config("linear")
 _ = get_config("nonlinear")
@@ -202,7 +210,7 @@ _ = plot_metrics(logger)
 ```
 
 ```python
-#[fig for fig in plot_layer_jacobians(trained_model)]
+# [fig for fig in plot_layer_jacobians(trained_model)]
 ```
 
 ```python
@@ -273,10 +281,11 @@ _ = plot_metrics(logger)
 
 ## Evolution of log-det-Jacobian for NonLinear Coupling Model
 
+We see an overshoot for deep models, even for relatively small learning rates...
+
 ```python
 configs = {}
 
-# configs["1x Linear Coupling + Diagonal"] = get_config(depth=1, sizes=[], partitioning="lexicographic", shift_only=True, final_diagonal=True, bias=False, activation="identity")
 configs["3x Linear Coupling + Diagonal"] = get_config(
     "linear",
     n_layers=3,
@@ -286,6 +295,8 @@ for n_layers in (4, 8, 12, 16):
     configs[f"{n_layers}x Non-linear Coupling"] = get_config(
         "nonlinear",
         n_layers=n_layers,
+        #init_lr=1e-3,
+        #n_steps=10000,
     )
 
 
@@ -300,11 +311,11 @@ for label, config in configs.items():
 
     models[label] = trained_model
 
-fig =  plot_layer_log_det_jacobians(models)
+fig = plot_layer_log_det_jacobians(models)
 ```
 
 ```python
-#fig.savefig("depth_convergence.png", dpi=300)
+fig.savefig("depth_convergence_smaller_lr.png", dpi=300)
 ```
 
 ## Does the Linear Coupling Model learn the Cholesky decomposition?
@@ -316,13 +327,20 @@ Doesn't seem like it!
 ```python
 models = {}
 
-#for steps in (100, 500, 1000, 5000):
-for n_layers in (4, 8, 12):    
-    config = get_config("linear", L=16, m_sq=1/16, n_layers=n_layers, steps=4000, batch_size=4096)
+# for steps in (100, 500, 1000, 5000):
+for n_layers in (4, 8, 12):
+    config = get_config(
+        "linear",
+        L=16,
+        m_sq=1 / 16,
+        n_layers=n_layers,
+        steps=4000,
+        batch_size=4096,
+    )
     trained_model, logger = main(config)
     mlw = float(logger.get_data()["mlw"].mean(dim=1)[-1])
 
-    #label = f"{steps} steps, (KL: {-mlw:.2g})"
+    # label = f"{steps} steps, (KL: {-mlw:.2g})"
     label = f"{n_layers}x Linear Coupling, (KL: {-mlw:.2g})"
     models[label] = trained_model
 

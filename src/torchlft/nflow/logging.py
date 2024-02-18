@@ -37,8 +37,7 @@ class Logger(ABC):
         self._train_dir = td
 
     @abstractmethod
-    def update(self, data: Any, step: int, **extra_context) -> None:
-        ...
+    def update(self, data: Any, step: int, **extra_context) -> None: ...
 
 
 class MonotoneIntegerDict(OrderedDict):

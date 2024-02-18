@@ -67,9 +67,11 @@ def _tuple_stack(
 def tuple_stack(tensors: tuple[tuple[Tensor, ...]], dim: int = 0) -> tuple:
     return type(tensors)(
         [
-            torch.stack(t, dim=dim)
-            if isinstance(t[0], torch.Tensor)
-            else tuple_stack(t, dim=dim)
+            (
+                torch.stack(t, dim=dim)
+                if isinstance(t[0], torch.Tensor)
+                else tuple_stack(t, dim=dim)
+            )
             for t in zip(*tensors)
         ]
     )
