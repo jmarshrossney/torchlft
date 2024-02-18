@@ -10,7 +10,29 @@ authors = ["marshrossney <17361029+marshrossney@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "3.11.*"
+torch = "2"
+tqdm = "^4.66.1"
+numpy = "^1.26.3"
+matplotlib = "^3.8.2"
+pandas = "^2.2.0"
+
+[tool.poetry.group.dev.dependencies]
+ipython = "^8.19.0"
+black = {extras = ["jupyter"], version = "^24.2.0"}
+flake8 = "^7.0.0"
+pytest = "^7.4.4"
+
+
+[tool.poetry.group.exp.dependencies]
+jsonargparse = {extras = ["all"], version = "^4.27.1"}
+jupyterlab = "^4.1.0"
+jupytext = "^1.16.1"
+ipywidgets = "^8.1.2"
+matplotlib = "^3.8.2"
+
+[tool.jupytext]
+formats= "ipynb,md"
 
 [tool.black]
 line-length = 79
@@ -21,6 +43,7 @@ exclude = '''
       \.git
     | \.github
     | \.pytest_cache
+    | \.ipynb_checkpoints
     | \.venv
     | __pycache__
     | workbench
