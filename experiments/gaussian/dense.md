@@ -12,7 +12,7 @@ jupyter:
     name: python3
 ---
 
-# Dense Coupling Flows and Gaussian Fields
+# Coupling Layer Models and Gaussian Fields
 
 ```python
 import torch
@@ -28,33 +28,6 @@ plt.style.use("seaborn-v0_8-paper")
 ## Define some plotting functions
 
 ```python
-def plot_layer_jacobians(model_, batch_size=64):
-    layers = [(name, mod) for name, mod in model_.named_modules() if isinstance(mod, Layer)]
-    #print(layers)
-    
-    flow, *layers = layers
-    layers = layers + [flow, ("full model", model_.flow_forward)]
-    
-    inputs, _ = model_.sample_base(batch_size)
-
-    n_rows = (len(layers) + 1) // 2
-    fig, axes = plt.subplots(n_rows, 2, figsize=(8, 4 * n_rows))
-    axes = iter(axes.flatten())
-        
-    for label, transform in layers:
-        
-        with torch.no_grad():
-            jac, _, _ = get_jacobian(transform, inputs)
-    
-        ax = next(axes)
-        ax.imshow(jac.pow(2).sum(0).sqrt())
-        ax.set_title(f"{label}")
-    
-    fig.tight_layout()
-
-    return fig
-
-
 def plot_jacobian_squared_vs_covariance(model_, batch_size=64):
     with torch.no_grad():
         jac, _, _ = get_model_jacobian(model_, batch_size)
@@ -69,8 +42,9 @@ def plot_jacobian_squared_vs_covariance(model_, batch_size=64):
     axes[1].imshow(jac_sq.mean(dim=0))
     im = axes[2].imshow(jac_sq.mean(dim=0) - cov)
     fig.colorbar(im)
-    
+
     return fig
+
 
 def plot_qr_diag(model_):
     cholesky = model_.target.cholesky
@@ -89,8 +63,9 @@ def plot_qr_diag(model_):
     ax.plot(λ_chol, "k--", label="Cholesky")
     ax.plot(λ_R, "ro:", label="Model")
     ax.legend()
-    
+
     return fig
+
 
 def plot_qr_vs_cholesky(model_):
     cholesky = model_.target.cholesky
@@ -101,7 +76,7 @@ def plot_qr_vs_cholesky(model_):
     Q, R = torch.linalg.qr(jac[0])
 
     print(cholesky + R.T)
-    #print(R)
+    # print(R)
 
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
     ax1.imshow(R.T)
@@ -109,14 +84,14 @@ def plot_qr_vs_cholesky(model_):
     im = ax3.imshow(R.T - cholesky)
     fig.colorbar(im)
 
-    
     return fig
+
 
 def plot_jacobian_spectrum(model_, batch_size=64):
     cholesky = model_.target.cholesky
     λ_chol = torch.linalg.eigvals(cholesky).real
     λ_chol, _ = λ_chol.sort()
-    
+
     with torch.no_grad():
         jac, _, _ = get_model_jacobian(model_, batch_size)
 
@@ -136,15 +111,15 @@ def plot_jacobian_spectrum(model_, batch_size=64):
     axes = iter(axes.flatten())
 
     ax = next(axes)
-    #ax.fill_between(range(D), λ_real.quantile(0., dim=0), λ_real.quantile(1., dim=0), alpha=0.7, label="Real")
-    #ax.plot(range(D), λ_real.quantile(0.5, dim=0), "r-", label="Real")
-    #print(λ_real)
-    #print(λ_imag)
-    
-    #ax.fill_between(range(D), λ_imag.quantile(0., dim=0), λ_imag.quantile(1., dim=0), alpha=0.7, label="Imag")
-    #ax.plot(range(D), λ_imag.quantile(0.5, dim=0), "g-", label="Imag")
+    # ax.fill_between(range(D), λ_real.quantile(0., dim=0), λ_real.quantile(1., dim=0), alpha=0.7, label="Real")
+    # ax.plot(range(D), λ_real.quantile(0.5, dim=0), "r-", label="Real")
+    # print(λ_real)
+    # print(λ_imag)
+
+    # ax.fill_between(range(D), λ_imag.quantile(0., dim=0), λ_imag.quantile(1., dim=0), alpha=0.7, label="Imag")
+    # ax.plot(range(D), λ_imag.quantile(0.5, dim=0), "g-", label="Imag")
     ax.plot(range(D), λ_abs.quantile(0.5, dim=0), "b-", label="Abs(real)")
-    
+
     ax.plot(range(D), λ_chol, "k--", label="Cholesky")
 
     ax.legend()
@@ -152,33 +127,36 @@ def plot_jacobian_spectrum(model_, batch_size=64):
     ax = next(axes)
     det_expec = torch.linalg.det(cholesky)
     det = torch.linalg.det(jac)
-    #ax.hist(det.log(), label="model")
+    # ax.hist(det.log(), label="model")
     ax.axvline(det_expec.log(), label="Choleksy", color="r")
 
     eig_prod = torch.prod(λ, dim=1)
     ax.hist(eig_prod.real.abs().log(), label="Real product of eigs")
     max_imag_log_det = eig_prod.imag.clamp(0).log().max()
     print(f"Max imaginary part: {max_imag_log_det}")
-    
+
     ax.legend()
-    
+
     return fig
 
 
 def plot_layer_jacobian_determinants(model_, batch_size=64):
-    layers = [(name, mod) for name, mod in model_.named_modules() if isinstance(mod, Layer)]
-    #print(layers)
-    
+    layers = [
+        (name, mod)
+        for name, mod in model_.named_modules()
+        if isinstance(mod, Layer)
+    ]
+    # print(layers)
+
     flow, *layers = layers
-    
+
     inputs, _ = model_.sample_base(batch_size)
     cloned_inputs = inputs.clone()
 
-
     dets, ldjs = [], []
-        
+
     for label, transform in layers:
-        
+
         with torch.no_grad():
             jac, _, _ = get_jacobian(transform, inputs)
             outputs, ldj = transform(inputs)
@@ -199,84 +177,67 @@ def plot_layer_jacobian_determinants(model_, batch_size=64):
     with torch.no_grad():
         jac, _, _ = get_jacobian(flow[1], cloned_inputs)
 
-    #ldj = torch.linalg.det(jac).log()
-    #ax.axhspan(ldj.quantile(0.25), ldj.quantile(0.75), color="red", alpha=0.5, label="smee")
-    #ax.axhline(ldj.quantile(0.5), color="red", label="full flow")
+    # ldj = torch.linalg.det(jac).log()
+    # ax.axhspan(ldj.quantile(0.25), ldj.quantile(0.75), color="red", alpha=0.5, label="smee")
+    # ax.axhline(ldj.quantile(0.5), color="red", label="full flow")
     correct = model_.target.cholesky.diag().log().sum()
     ax.axhline(correct, color="red", label="log det Chol")
 
     dets = dets.cumsum(dim=0)
-    ax.fill_between(range(len(layers)), dets.quantile(0.25, dim=1), dets.quantile(0.75, dim=1), alpha=0.5)
-    ax.plot(range(len(layers)), dets.quantile(0.5, dim=1), "o--", label="layers")
+    ax.fill_between(
+        range(len(layers)),
+        dets.quantile(0.25, dim=1),
+        dets.quantile(0.75, dim=1),
+        alpha=0.5,
+    )
+    ax.plot(
+        range(len(layers)), dets.quantile(0.5, dim=1), "o--", label="layers"
+    )
 
-    
-    #[flow, ("full model", model_.flow_forward)]
+    # [flow, ("full model", model_.flow_forward)]
 
     ax.legend()
     fig.tight_layout()
     return fig
 
-def plot_layer_ldj(model_):
-    layers = [(name, mod) for name, mod in model_.named_modules() if isinstance(mod, Layer)]
-    #print(layers)
-    
-    flow, *layers = layers
-    layers = layers# + [flow, ("full model", model_.flow_forward)]
-    
-    inputs, _ = model_.sample_base(64)
-
-    fig, ax = plt.subplots()
-
-    with torch.no_grad():
-        data = [transform(inputs)[1] for _, transform in layers]
-
-    data = torch.cat(data, dim=-1)
-    print(data.shape)
-    
-    ax.fill_between(range(data.shape[1]), data.quantile(.25, dim=0), data.quantile(.85, dim=0), alpha=0.6)
-    ax.plot(range(data.shape[1]), data.quantile(.5, dim=0), "--")
-            
-    fig.tight_layout()
-
-    return fig
 
 def plot_metrics(logger):
     metrics = logger.get_data()
-      
+
     steps = metrics["steps"]
     kl_div = -metrics["mlw"]
     one_minus_ess = 1 - metrics["ess"]
     one_minus_acc = 1 - metrics["acc"]
     vlw = metrics["vlw"]
-    
-    print("Mean acceptance: " , float(metrics["acc"].mean(1)[-1]))
-    
+
+    print("Mean acceptance: ", float(metrics["acc"].mean(1)[-1]))
+
     def plot(ax, tensor):
         q = torch.tensor([0.0, 1.0], dtype=tensor.dtype)
         ax.fill_between(steps, *tensor.quantile(q, dim=1), alpha=0.5)
         ax.plot(steps, tensor.quantile(0.5, dim=1))
         ax.set_yscale("log")
-    
+
     fig, axes = plt.subplots(2, 2, sharex=True, figsize=(8, 6))
-    
+
     axes = iter(axes.flatten())
-    
+
     ax = next(axes)
     plot(ax, kl_div)
     ax.set_title("KL Divergence")
-    
+
     ax = next(axes)
     plot(ax, one_minus_acc)
     ax.set_title("1 - Acceptance")
-    
+
     ax = next(axes)
     plot(ax, one_minus_ess)
     ax.set_title("1 - ESS")
-    
+
     ax = next(axes)
     plot(ax, vlw)
     ax.set_title("Var log weights")
-    
+
     fig.tight_layout()
 
     return fig
@@ -318,6 +279,7 @@ train:
 output: false
 cuda: true
 """
+
 
 def get_config(
     L: int = 8,
@@ -364,7 +326,15 @@ print(untrained_model)
 ## Linear Model
 
 ```python
-config = get_config(depth=2, sizes=[], partitioning="lexicographic", shift_only=True, final_diagonal=True, bias=False, activation="identity")
+config = get_config(
+    depth=2,
+    sizes=[],
+    partitioning="lexicographic",
+    shift_only=True,
+    final_diagonal=True,
+    bias=False,
+    activation="identity",
+)
 
 instantiated_config = parser.instantiate_classes(config)
 untrained_model = instantiated_config.model
@@ -383,47 +353,47 @@ acceptance = float(logger.get_data()["acc"].mean(dim=1)[-1])
 print(f"Final acceptance: {acceptance}")
 
 _ = plot_qr_vs_cholesky(trained_model)
-#_ = plot_qr_diag(trained_model)
-#_ = plot_layer_jacobians(trained_model)
+# _ = plot_qr_diag(trained_model)
+# _ = plot_layer_jacobians(trained_model)
 _ = plot_jacobian_squared_vs_covariance(trained_model, 1)
-#_ = plot_jacobian_spectrum(trained_model)
-#_ = plot_layer_jacobian_determinants(trained_model)
+# _ = plot_jacobian_spectrum(trained_model)
+# _ = plot_layer_jacobian_determinants(trained_model)
 ```
 
 ```python
 def plot_qr_diag_many_models(models_):
-    
+
     cholesky = list(models_.values())[0].target.cholesky
     λ_chol = cholesky.diag()
     λ_chol, _ = λ_chol.sort()
 
     fig, ax = plt.subplots()
 
-    c, = ax.plot(λ_chol, "k-", label="Cholesky")
+    (c,) = ax.plot(λ_chol, "k-", label="Cholesky")
 
     handles, labels = [c], ["Cholesky eigvals"]
-    
+
     for label, model_ in models_.items():
 
         with torch.no_grad():
             jac, _, _ = get_model_jacobian(model_, 1)
-    
+
         Q, R = torch.linalg.qr(jac[0])
         λ_R = R.diag().abs()
         λ_R, _ = λ_R.sort()
 
         # Marker to indicate which one is negative??
 
-        line, = ax.plot(λ_R)
+        (line,) = ax.plot(λ_R)
 
         labels.append(label)
         handles.append(line)
 
     ax.set_xlabel("Ascending order")
     ax.set_ylabel("Absolute value of real eigenvalues")
-    
+
     ax.legend(handles=handles, labels=labels)
-    
+
     return fig
 ```
 
@@ -431,7 +401,17 @@ def plot_qr_diag_many_models(models_):
 models = {}
 
 for steps in (100, 500, 1000, 5000, 10000):
-    config = get_config(depth=2, sizes=[], partitioning="lexicographic", shift_only=True, final_diagonal=True, bias=False, activation="identity", steps=steps, batch=8192)
+    config = get_config(
+        depth=2,
+        sizes=[],
+        partitioning="lexicographic",
+        shift_only=True,
+        final_diagonal=True,
+        bias=False,
+        activation="identity",
+        steps=steps,
+        batch=8192,
+    )
     trained_model, logger = main(config)
     mlw = float(logger.get_data()["mlw"].mean(dim=1)[-1])
 
@@ -444,7 +424,15 @@ fig = plot_qr_diag_many_models(models)
 ## Non-linear Model
 
 ```python
-config = get_config(depth=6, sizes=[64], partitioning="lexicographic", shift_only=False, final_diagonal=False, bias=True, activation="tanh")
+config = get_config(
+    depth=6,
+    sizes=[64],
+    partitioning="lexicographic",
+    shift_only=False,
+    final_diagonal=False,
+    bias=True,
+    activation="tanh",
+)
 
 instantiated_config = parser.instantiate_classes(config)
 untrained_model = instantiated_config.model
@@ -458,7 +446,7 @@ trained_model, logger = main(config)
 acceptance = float(logger.get_data()["acc"].mean(dim=1)[-1])
 print(f"Final acceptance: {acceptance}")
 
-#_ = plot_layer_jacobians(trained_model)
+# _ = plot_layer_jacobians(trained_model)
 _ = plot_jacobian_squared_vs_covariance(trained_model, 1)
 _ = plot_jacobian_spectrum(trained_model)
 _ = plot_layer_jacobian_determinants(trained_model)
@@ -469,44 +457,56 @@ _ = plot_layer_jacobian_determinants(trained_model)
 ```python
 def plot_ldj_multiple_flows(models: dict, batch_size=64):
 
-    assert len(set([model.target.lattice_length for model in models.values()])) == 1
+    assert (
+        len(set([model.target.lattice_length for model in models.values()]))
+        == 1
+    )
     assert len(set([model.target.m_sq for model in models.values()])) == 1
 
     data = {}
 
     for label, model in models.items():
-        layers = [(name, mod) for name, mod in model.named_modules() if isinstance(mod, Layer)]
+        layers = [
+            (name, mod)
+            for name, mod in model.named_modules()
+            if isinstance(mod, Layer)
+        ]
         _, *layers = layers
-    
+
         inputs, _ = model.sample_base(batch_size)
 
         ldjs = []
-            
+
         for _, transform in layers:
             with torch.no_grad():
                 outputs, ldj = transform(inputs)
                 inputs = outputs
-    
+
             ldjs.append(ldj.squeeze(-1))
-    
+
         ldjs = torch.stack(ldjs)
-        
+
         data[label] = ldjs
-    
+
     fig, ax = plt.subplots()
-    
+
     correct = model.target.cholesky.diag().log().sum()
     hl = ax.axhline(correct, color="black", linestyle=":")
 
     legend = [[hl, "log det Cholesky"]]
-    
+
     for label, ldj in data.items():
         depth = range(1, len(ldj) + 1)
         print(ldj.shape)
         ldj = ldj.cumsum(dim=0)
-        
-        fb = ax.fill_between(depth, ldj.quantile(0.25, dim=1), ldj.quantile(0.75, dim=1), alpha=0.5)
-        l, = ax.plot(depth, ldj.quantile(0.5, dim=1), "--")
+
+        fb = ax.fill_between(
+            depth,
+            ldj.quantile(0.25, dim=1),
+            ldj.quantile(0.75, dim=1),
+            alpha=0.5,
+        )
+        (l,) = ax.plot(depth, ldj.quantile(0.5, dim=1), "--")
         handle = (l, fb)
         legend.append([handle, label])
 
@@ -523,21 +523,36 @@ def plot_ldj_multiple_flows(models: dict, batch_size=64):
 ```python
 configs = {}
 
-#configs["1x Linear Coupling + Diagonal"] = get_config(depth=1, sizes=[], partitioning="lexicographic", shift_only=True, final_diagonal=True, bias=False, activation="identity")
-configs["2x Linear Coupling + Diagonal"] = get_config(depth=2, sizes=[], partitioning="lexicographic", shift_only=True, final_diagonal=True, bias=False, activation="identity")
+# configs["1x Linear Coupling + Diagonal"] = get_config(depth=1, sizes=[], partitioning="lexicographic", shift_only=True, final_diagonal=True, bias=False, activation="identity")
+configs["2x Linear Coupling + Diagonal"] = get_config(
+    depth=2,
+    sizes=[],
+    partitioning="lexicographic",
+    shift_only=True,
+    final_diagonal=True,
+    bias=False,
+    activation="identity",
+)
 
 defaults = dict(
-    sizes=[64], partitioning="lexicographic", shift_only=False, final_diagonal=False, bias=True, activation="tanh"
+    sizes=[64],
+    partitioning="lexicographic",
+    shift_only=False,
+    final_diagonal=False,
+    bias=True,
+    activation="tanh",
 )
 
 for depth in (2, 4, 6, 8):
-    configs[f"{depth}x Non-linear Coupling"] = get_config(depth=depth, **defaults)
+    configs[f"{depth}x Non-linear Coupling"] = get_config(
+        depth=depth, **defaults
+    )
 
 
 models = {}
 
 for label, config in configs.items():
-    
+
     trained_model, logger = main(config)
 
     ess = float(logger.get_data()["ess"].mean(dim=1)[-1])
@@ -628,6 +643,7 @@ output: false
 cuda: true
 """
 
+
 def get_config(
     L: int = 8,
     m_sq: float = 0.25,
@@ -649,8 +665,8 @@ def get_config(
         symmetric=symmetric,
         shift_only=shift_only,
         partitioning=partitioning,
-        #final_diagonal=final_diagonal,
-        #bias=bias,
+        # final_diagonal=final_diagonal,
+        # bias=bias,
         activation=activation,
         kernel_radius=kernel_radius,
     )

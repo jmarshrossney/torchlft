@@ -67,17 +67,16 @@ def permute_io(net: nn.Module, spatial_dims: int) -> nn.Module:
 
 
 def permuted_conv2d(input, weight):
-
     K1, K2, _, _ = weight.shape
     assert K1 == K2
     assert K1 % 2 == 1
     r = (K1 - 1) // 2
-    
+
     input = input.permute(0, 3, 1, 2)
     input = nn.functional.pad(input, (r, r, r, r), "circular")
 
     weight = weight.permute(2, 3, 0, 1)
-    
+
     return nn.functional.conv2d(
         input,
         weight,
@@ -99,7 +98,11 @@ class ConvNet2d:
     def build(self):
         conv_layers = [
             nn.LazyConv2d(
-                n, kernel_size=(2 * r + 1), padding=r, padding_mode="circular", bias=self.bias
+                n,
+                kernel_size=(2 * r + 1),
+                padding=r,
+                padding_mode="circular",
+                bias=self.bias,
             )
             for n, r in zip(self.channels, self.kernel_radius, strict=True)
         ]
@@ -124,7 +127,11 @@ class ConvNet1d:
     def build(self):
         conv_layers = [
             nn.LazyConv1d(
-                n, kernel_size=(2 * r + 1), padding=r, padding_mode="circular", bias=self.bias
+                n,
+                kernel_size=(2 * r + 1),
+                padding=r,
+                padding_mode="circular",
+                bias=self.bias,
             )
             for n, r in zip(self.channels, self.kernel_radius, strict=True)
         ]

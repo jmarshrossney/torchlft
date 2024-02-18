@@ -36,12 +36,16 @@ def affine_transform(
         if scale_fn == "exponential":
             scale_fn = lambda s: torch.exp(-s)  # noqa E731
         elif scale_fn == "softplus":
-            scale_fn = lambda s: torch.nn.functional.softplus(-s, beta=log(2))  # noqa E731
+            scale_fn = lambda s: torch.nn.functional.softplus(
+                -s, beta=log(2)
+            )  # noqa E731
 
         if symmetric:
             raise Exception("this is bad")
             _scale_fn = scale_fn
-            scale_fn = lambda s: _scale_fn(s.abs())# + _scale_fn(-s))  # noqa E731
+            scale_fn = lambda s: _scale_fn(
+                s.abs()
+            )  # + _scale_fn(-s))  # noqa E731
 
         if rescale_only:
             n_params = 1

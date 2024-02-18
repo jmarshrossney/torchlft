@@ -57,13 +57,15 @@ one_minus_ess = 1 - metrics["ess"]
 one_minus_acc = 1 - metrics["acc"]
 vlw = metrics["vlw"]
 
-print("Mean acceptance: " , float(metrics["acc"].mean(1)[-1]))
+print("Mean acceptance: ", float(metrics["acc"].mean(1)[-1]))
+
 
 def plot(ax, tensor):
     q = torch.tensor([0.0, 1.0], dtype=tensor.dtype)
     ax.fill_between(steps, *tensor.quantile(q, dim=1), alpha=0.5)
     ax.plot(steps, tensor.quantile(0.5, dim=1))
     ax.set_yscale("log")
+
 
 fig, axes = plt.subplots(2, 2, sharex=True, figsize=(8, 6))
 
@@ -162,13 +164,15 @@ one_minus_ess = 1 - metrics["ess"]
 one_minus_acc = 1 - metrics["acc"]
 vlw = metrics["vlw"]
 
-print("Mean acceptance: " , float(metrics["acc"].mean(1)[-1]))
+print("Mean acceptance: ", float(metrics["acc"].mean(1)[-1]))
+
 
 def plot(ax, tensor):
     q = torch.tensor([0.0, 1.0], dtype=tensor.dtype)
     ax.fill_between(steps, *tensor.quantile(q, dim=1), alpha=0.5)
     ax.plot(steps, tensor.quantile(0.5, dim=1))
     ax.set_yscale("log")
+
 
 fig, axes = plt.subplots(2, 2, sharex=True, figsize=(8, 6))
 
@@ -211,8 +215,10 @@ print(checker)
 a = torch.arange(k**2).view(k, k) * checker
 print(a)
 
-a = torch.zeros(k, k, dtype=torch.long).masked_scatter(checker, torch.arange(1, k**2 // 2 + 1))
-#a[checker] = torch.arange(1, k**2 // 2 + 1)
+a = torch.zeros(k, k, dtype=torch.long).masked_scatter(
+    checker, torch.arange(1, k**2 // 2 + 1)
+)
+# a[checker] = torch.arange(1, k**2 // 2 + 1)
 print(a)
 
 one_hot = torch.nn.functional.one_hot(a)
@@ -277,13 +283,15 @@ one_minus_ess = 1 - metrics["ess"]
 one_minus_acc = 1 - metrics["acc"]
 vlw = metrics["vlw"]
 
-print("Mean acceptance: " , float(metrics["acc"].mean(1)[-1]))
+print("Mean acceptance: ", float(metrics["acc"].mean(1)[-1]))
+
 
 def plot(ax, tensor):
     q = torch.tensor([0.0, 1.0], dtype=tensor.dtype)
     ax.fill_between(steps, *tensor.quantile(q, dim=1), alpha=0.5)
     ax.plot(steps, tensor.quantile(0.5, dim=1))
     ax.set_yscale("log")
+
 
 fig, axes = plt.subplots(2, 2, sharex=True, figsize=(8, 6))
 

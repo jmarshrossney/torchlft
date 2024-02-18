@@ -89,7 +89,9 @@ print(L_inv)
 ```
 
 ```python
-plt.plot(Σ[0])  # TODO mean for each shift, plot, show correlation length is 1/m
+plt.plot(
+    Σ[0]
+)  # TODO mean for each shift, plot, show correlation length is 1/m
 ```
 
 ### Visualising the Kronecker product
@@ -137,7 +139,7 @@ $$
 ```python
 print(torch.kron(Id, δ_sq).int())
 print(torch.kron(δ_sq, Id).int())
-#laplacian(4, 2).int()
+# laplacian(4, 2).int()
 ```
 
 ```python
@@ -178,7 +180,7 @@ log_G = C.sum(0).log()
 ξ = 1 / sqrt(m_sq)
 x = torch.linspace(0, L, 100)
 log_cosh_ = log_cosh((x - L / 2) / ξ)
-c = (log_G[0] - log_cosh_[0])
+c = log_G[0] - log_cosh_[0]
 
 fig, ax = plt.subplots()
 ax.set_xlabel("x")
@@ -237,9 +239,7 @@ k_hat = (k / 2).sin().pow(2) * 4
 
 λ
 
-#K = -laplacian(l, 2) + m_sq * torch.eye(D)
-
-
+# K = -laplacian(l, 2) + m_sq * torch.eye(D)
 ```
 
 ```python
@@ -253,7 +253,7 @@ y1 = rfft2(x)
 y2 = fft(rfft(x, dim=1), dim=0)
 
 print(y1 - y2)
-#print(y2)
+# print(y2)
 ```
 
 The DFT transforms real-valued fields into complex Hermitean fields in Fourier space.
@@ -327,7 +327,7 @@ K = -laplacian(l, 2) + m_sq * torch.eye(D)
 L = torch.linalg.cholesky(Σ)
 L_inv = torch.linalg.cholesky(K)
 
-#print(L)
+# print(L)
 
 print("Doesn't seem to round trip..? Inv[Chol[K]] =/= Chol[Inv[K]]")
 print((L_inv - torch.linalg.inv(L)).abs().max())
@@ -374,7 +374,6 @@ D = l * l
 m_sq = 0.1
 
 
-
 K = -laplacian(l, 2) + m_sq * torch.eye(D)
 Σ = torch.linalg.inv(K)
 L = torch.linalg.cholesky(Σ)
@@ -413,7 +412,10 @@ print(torch.dot(φ_1, torch.mv(K, φ_1)))
 print(torch.dot(φ_2, torch.mv(K, φ_2)))
 ```
 
-Spectrum of Choleksy versus Covariance
+### Spectrum of Choleksy versus Covariance
+
+Note that eigvals of Cholesky are not the square root of eigvals of covariance!
+You would need to FT to make the cov diagonal for this to be true.
 
 ```python
 l = 8
@@ -466,7 +468,7 @@ model:
 train:
     n_steps: 2000
     batch_size: 2000
-    init_lr: 0.005
+    init_lr: 0.01
     display_metrics: false
 
 output: false
@@ -480,96 +482,9 @@ model, logger = main(config)
 ```
 
 ```python
-metrics = logger.get_data()
+from plot import plot_metrics
 
-print([(k, v.shape) for k, v in metrics.items()])
-
-steps = metrics["steps"]
-kl_div = -metrics["mlw"]
-one_minus_ess = 1 - metrics["ess"]
-one_minus_acc = 1 - metrics["acc"]
-vlw = metrics["vlw"]
-
-def plot(ax, tensor):
-    q = torch.tensor([0.0, 1.0], dtype=tensor.dtype)
-    ax.fill_between(steps, *tensor.quantile(q, dim=1), alpha=0.5)
-    ax.plot(steps, tensor.quantile(0.5, dim=1))
-    ax.set_yscale("log")
-
-fig, axes = plt.subplots(2, 2, sharex=True, figsize=(8, 6))
-
-axes = iter(axes.flatten())
-
-
-ax = next(axes)
-plot(ax, kl_div)
-ax.set_title("KL Divergence")
-
-#ax = next(axes)
-plot(ax, one_minus_acc)
-ax.set_title("1 - Acceptance")
-
-#ax = next(axes)
-plot(ax, one_minus_ess)
-ax.set_title("1 - ESS")
-
-#ax = next(axes)
-plot(ax, vlw)
-ax.set_title("Var log weights")
-
-fig.tight_layout()
-```
-
-```python
-metrics = logger.get_data()
-
-print([(k, v.shape) for k, v in metrics.items()])
-
-steps = metrics["steps"]
-kl_div = -metrics["mlw"]
-one_minus_ess = 1 - metrics["ess"]
-one_minus_acc = 1 - metrics["acc"]
-vlw = metrics["vlw"]
-
-def plot(ax, tensor, colour):
-    q = torch.tensor([0.25, 0.75], dtype=tensor.dtype)
-    fb = ax.fill_between(steps, *tensor.quantile(q, dim=1), color=colour, alpha=0.5)
-    l, = ax.plot(steps, tensor.quantile(0.5, dim=1), color=colour, linestyle="--")
-    return (fb, l)
-
-fig, ax = plt.subplots(figsize=(6, 4))
-
-#axes = iter(axes.flatten())
-
-handles = []
-labels = []
-
-handle = plot(ax, kl_div, "tab:blue")
-handles.append(handle)
-labels.append("KL Divergence")
-
-handle = plot(ax, one_minus_acc, "tab:orange")
-handles.append(handle)
-labels.append("1 - Acceptance")
-
-handle = plot(ax, one_minus_ess, "tab:green")
-handles.append(handle)
-labels.append("1 - ESS")
-
-handle = plot(ax, vlw, "tab:red")
-handles.append(handle)
-labels.append(r"Variance of $\log (p_\theta / p^\ast)$")
-
-ax.set_yscale("log")
-ax.set_ylim(1e-3, 10)
-
-ax.set_xlabel("Training step")
-
-ax.legend(handles, labels)
-
-fig.tight_layout
-
-fig.savefig("training.png", dpi=300)
+fig = plot_metrics(logger)
 ```
 
 ```python
@@ -602,14 +517,19 @@ axes[2].set_xlabel(r"$L_\theta - L_\ast$")
 
 axes[0].imshow(empirical_weights)
 axes[1].imshow(empirical_weights - expected_weights)
-axes[2].hist((empirical_weights - expected_weights)[model.transform.mask], bins=35)
+axes[2].hist(
+    (empirical_weights - expected_weights)[model.transform.mask], bins=35
+)
 
 fig.tight_layout()
 fig.savefig("cholesky_heatmaps.png", dpi=300)
 ```
 
 ```python
-_ = plt.hist((empirical_weights - expected_weights).flatten(), bins=25)
+_ = plt.hist(
+    (empirical_weights - expected_weights)[model.transform.mask].flatten(),
+    bins=25,
+)
 ```
 
 ```python
@@ -634,10 +554,4 @@ _ = plt.hist((expected_cov - empirical_cov).flatten(), bins=25)
 sample, indices = model.metropolis_sample(10000)
 indices = indices.tolist()
 print("Acceptance: ", len(set(indices)) / len(indices))
-```
-
-## Learning rate annealing
-
-```python
-
 ```

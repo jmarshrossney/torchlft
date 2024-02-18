@@ -6,10 +6,14 @@ import torch.nn as nn
 
 Tensor: TypeAlias = torch.Tensor
 
+
 class Layer(nn.Module, metaclass=ABCMeta):
     @abstractmethod
-    def forward(self, inputs: Tensor | tuple[Tensor, ...]) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
+    def forward(
+        self, inputs: Tensor | tuple[Tensor, ...]
+    ) -> tuple[Tensor | tuple[Tensor, ...], Tensor]:
         ...
+
 
 class Composition(Layer):
     def __init__(self, *layers: Layer):
@@ -29,4 +33,3 @@ class Composition(Layer):
             inputs = outputs
 
         return outputs, ldj_total
-

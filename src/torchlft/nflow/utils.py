@@ -6,7 +6,7 @@ import torch.nn as nn
 Tensor: TypeAlias = torch.Tensor
 
 
-
+@torch.no_grad()
 def get_jacobian(transform, inputs: Tensor):
     def forward(input):
         output, *_ = transform(input.unsqueeze(0))
