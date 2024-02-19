@@ -1,5 +1,5 @@
 from math import log, pi as π
-from typing import TypeAlias
+from typing import NamedTuple, Self, TypeAlias
 
 import torch
 import torch.nn as nn
@@ -56,30 +56,107 @@ class GaussianAction(nn.Module):
         return mv(K, φ)
 
 
-class ActionV2:
-    def __init__(self, m_sq: float, lattice_dim: int = 2):
-        self.m_sq = m_sq
-        self.lattice_dim = lattice_dim
+class InvalidCouplings(Exception):
+    pass
 
-    def __call__(self, φ: Tensor) -> Tensor:
-        lattice_dims = tuple(range(1, self.lattice_dim + 1))
-        s = torch.zeros_like(φ)
 
-        for μ in lattice_dims:  # TODO: accept different dims?
-            s -= 0.5 * φ * φ.roll(-1, μ)
-            s -= 0.5 * φ * φ.roll(+1, μ)
+#TODO check valid ?
+class Phi4Couplings(NamedTuple):
+    r"""
+    Coefficients for the three terms in the Phi^4 action.
+    """
 
-        s += 0.5 * (4 + self.m_sq) * φ**2
+    β: float
+    α: float
+    λ: float
 
+    @classmethod
+    def particle_phys(cls, m_sq: float, λ: float) -> Self:
+        """
+        Standard Particle Physics parametrisation of Phi^4.
+        """
+        return cls(β=1, α=(4 + m_sq) / 2, λ=λ)
+
+    @classmethod
+    def ising(cls, β: float, λ: float) -> Self:
+        """
+        Ising-like parametrisation of Phi^4.
+        """
+        return cls(β=β, α=1 - 2 * λ, λ=λ)
+
+    @classmethod
+    def cond_mat(cls, κ: float, λ: float) -> Self:
+        """
+        Condensed matter parametrisation.
+        """
+        return cls(β=2 * κ, α=1 - 2 * λ, λ=λ)
+
+
+_PARAMETRISATIONS = {
+    ("m_sq", "lambda"): Phi4Couplings.particle_phys,
+    ("m_sq", "λ"): Phi4Couplings.particle_phys,
+    ("beta", "lambda"): Phi4Couplings.ising,
+    ("β", "λ"): Phi4Couplings.ising,
+    ("kappa", "lambda"): Phi4Couplings.cond_mat,
+    ("κ", "λ"): Phi4Couplings.cond_mat,
+}
+
+
+def _parse_couplings(couplings: dict[str, float]) -> Phi4Couplings:
+    try:
+        parser = _PARAMETRISATIONS[tuple(couplings.keys())]
+    except KeyError as exc:
+        raise InvalidCouplings(
+            f"{tuple(couplings.keys())} is not a known set of couplings"
+        ) from exc
+    return parser(**couplings)
+
+
+class Phi4Action(nn.Module):
+    def __init__(self, **couplings: dict[str, float]):
+        super().__init__()
+        self._original_couplings = couplings
+        self._parsed_couplings = _parse_couplings(couplings)
+
+    def extra_repr(self):
+        return str(self._original_couplings)
+
+    @property
+    def couplings(self) -> Phi4Couplings:
+        return self._original_couplings
+
+    def forward(self, ϕ: Tensor) -> Tensor:
+        β, α, λ = self._parsed_couplings
+        lattice_dims = (1, 2)
+
+        s = torch.zeros_like(ϕ)
+
+        # Nearest neighbour interaction
+        for μ in lattice_dims:
+            s -= β * (ϕ * ϕ.roll(-1, μ))
+
+        # phi^2 term
+        ϕ_sq = ϕ**2
+        s += α * ϕ_sq
+
+        # phi^4 term
+        s += λ * ϕ_sq**2
+
+        # Sum over lattice sites
         return s.sum(dim=lattice_dims)
 
-    def grad(self, φ: Tensor) -> Tensor:
-        lattice_dims = tuple(range(1, self.lattice_dim + 1))
+    def grad(self, ϕ: Tensor) -> Tensor:
+        β, α, λ = self._parsed_couplings
+        lattice_dims = (1, 2)
+
         dsdφ = torch.zeros_like(φ)
 
+        # Nearest neighbour interaction: +ve and -ve shifts
         for μ in lattice_dims:
-            dsdφ -= φ.roll(-1, μ) + φ.roll(+1, μ)
+            dsdφ -= β * (ϕ.roll(-1, μ) + ϕ.roll(+1, μ))
 
-        dsdφ += (4 + self.m_sq) * φ
+        dsdφ += 2 * α * ϕ
+
+        dsdφ += 4 * λ * ϕ**3
 
         return dsdφ

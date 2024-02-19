@@ -1,0 +1,20 @@
+model:
+  class_path: torchlft.models.phi4.DenseCouplingModel
+  init_args:
+    target:
+      lattice_length: 6
+      β: 0.537
+      λ: 0.5
+    flow:
+      net:
+        sizes: [128]
+        activation: tanh
+      n_layers: 6
+    partitioning: checkerboard
+
+train:
+  n_steps: 4000
+  batch_size: 4096
+  init_lr: 0.001
+
+output: false
