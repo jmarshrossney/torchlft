@@ -64,27 +64,27 @@ class Target:
 
 @dataclass
 class AffineCouplingFlow:
-    ...
-
-@dataclass
-class DenseCouplingFlow:
     net: DenseNet
     n_layers: PositiveInt
+    global_rescale: bool
+    symmetric: bool
 
     def build(self, lattice_size: int):
         layers = []
 
         for layer_id in range(self.n_layers):
             transform_module = UnivariateTransformModule(
-                transform_cls=affine_transform(),
-                context_fn=nn.Identity(),
+                transform_cls=affine_transform(symmetric=self.symmetric),
+                context_fn=nn.Identity(),  # nn.Tanh(),
                 wrappers=[sum_log_gradient],
             )
             net = self.net.build()
-            size_out = lattice_size
-            net.append(nn.LazyLinear(size_out))
+            net.append(nn.LazyLinear(lattice_size, bias=self.net.bias))
             layer = DenseCouplingLayer(transform_module, net, layer_id)
             layers.append(layer)
+    
+        if self.global_rescale:
+            layers.append(GlobalRescalingLayer())
 
         return Composition(*layers)
         
@@ -93,7 +93,7 @@ class DenseCouplingModel(BaseModel):
     def __init__(
         self,
         target: Target,
-        flow: DenseCouplingFlow,
+        flow: AffineCouplingFlow,
         partitioning: ValidPartitioning
     ):
         super().__init__()
@@ -102,7 +102,6 @@ class DenseCouplingModel(BaseModel):
         self.L = L
 
         self.register_module("target", target.build())
-        print(self.target)
 
         self.register_module("flow", flow.build(L**2))
         
