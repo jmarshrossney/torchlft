@@ -18,5 +18,6 @@ def cli():
     config = parser.parse_args()
     main(config)
 
+
 if __name__ == "__main__":
     cli()

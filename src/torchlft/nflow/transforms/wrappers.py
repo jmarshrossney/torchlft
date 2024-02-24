@@ -9,7 +9,7 @@ from torchlft.utils.torch import mod_2pi
 Tensor: TypeAlias = torch.Tensor
 Transform: TypeAlias = Callable[[Tensor, Any, ...], tuple[Tensor, Tensor]]
 Wrapper: TypeAlias = Callable[Transform, Transform]
-TransformFunc: TypeAlias = Callable # TODO
+TransformFunc: TypeAlias = Callable  # TODO
 
 
 def complex_to_arg(transform):
@@ -63,7 +63,7 @@ def vector_to_polar(transform):
     def vector_to_polar_(x: Tensor, *args, **kwargs):
         raise NotImplementedError
 
-    return 
+    return
 
 
 def pi_rotation(transform):
@@ -156,6 +156,7 @@ def mix_with_identity(transform: TransformFunc) -> TransformFunc:
 
     return mix_with_identity_
 
+
 def dilute(transform, factor: float):
     assert (factor >= 0) and (factor <= 1)
     c = 1 - factor
@@ -169,6 +170,7 @@ def dilute(transform, factor: float):
         return y, dydx
 
     return dilute_
+
 
 def rescale_to_interval(
     transform: TransformFunc,

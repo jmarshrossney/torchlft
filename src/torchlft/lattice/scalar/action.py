@@ -1,5 +1,6 @@
+from functools import partial
 from math import log, pi as π
-from typing import NamedTuple, Self, TypeAlias
+from typing import Callable, NamedTuple, Self, TypeAlias
 
 import torch
 import torch.nn as nn
@@ -56,11 +57,7 @@ class GaussianAction(nn.Module):
         return mv(K, φ)
 
 
-class InvalidCouplings(Exception):
-    pass
-
-
-#TODO check valid ?
+# TODO check valid ?
 class Phi4Couplings(NamedTuple):
     r"""
     Coefficients for the three terms in the Phi^4 action.
@@ -84,32 +81,12 @@ class Phi4Couplings(NamedTuple):
         """
         return cls(β=β, α=1 - 2 * λ, λ=λ)
 
-    @classmethod
-    def cond_mat(cls, κ: float, λ: float) -> Self:
-        """
-        Condensed matter parametrisation.
-        """
-        return cls(β=2 * κ, α=1 - 2 * λ, λ=λ)
-
-
-_PARAMETRISATIONS = {
-    ("m_sq", "lambda"): Phi4Couplings.particle_phys,
-    ("m_sq", "λ"): Phi4Couplings.particle_phys,
-    ("beta", "lambda"): Phi4Couplings.ising,
-    ("β", "λ"): Phi4Couplings.ising,
-    ("kappa", "lambda"): Phi4Couplings.cond_mat,
-    ("κ", "λ"): Phi4Couplings.cond_mat,
-}
-
 
 def _parse_couplings(couplings: dict[str, float]) -> Phi4Couplings:
-    try:
-        parser = _PARAMETRISATIONS[tuple(couplings.keys())]
-    except KeyError as exc:
-        raise InvalidCouplings(
-            f"{tuple(couplings.keys())} is not a known set of couplings"
-        ) from exc
-    return parser(**couplings)
+    if "β" in couplings:
+        return Phi4Couplings.ising(**couplings)
+    else:
+        return Phi4Couplings.particle_phys(**couplings)
 
 
 class Phi4Action(nn.Module):
@@ -125,27 +102,27 @@ class Phi4Action(nn.Module):
     def couplings(self) -> Phi4Couplings:
         return self._original_couplings
 
-    def forward(self, ϕ: Tensor) -> Tensor:
+    def forward(self, φ: Tensor) -> Tensor:
         β, α, λ = self._parsed_couplings
         lattice_dims = (1, 2)
 
-        s = torch.zeros_like(ϕ)
+        s = torch.zeros_like(φ)
 
         # Nearest neighbour interaction
         for μ in lattice_dims:
-            s -= β * (ϕ * ϕ.roll(-1, μ))
+            s -= β * (φ * φ.roll(-1, μ))
 
         # phi^2 term
-        ϕ_sq = ϕ**2
-        s += α * ϕ_sq
+        φ_sq = φ**2
+        s += α * φ_sq
 
         # phi^4 term
-        s += λ * ϕ_sq**2
+        s += λ * φ_sq**2
 
         # Sum over lattice sites
         return s.sum(dim=lattice_dims)
 
-    def grad(self, ϕ: Tensor) -> Tensor:
+    def grad(self, φ: Tensor) -> Tensor:
         β, α, λ = self._parsed_couplings
         lattice_dims = (1, 2)
 
@@ -153,10 +130,28 @@ class Phi4Action(nn.Module):
 
         # Nearest neighbour interaction: +ve and -ve shifts
         for μ in lattice_dims:
-            dsdφ -= β * (ϕ.roll(-1, μ) + ϕ.roll(+1, μ))
+            dsdφ -= β * (φ.roll(-1, μ) + φ.roll(+1, μ))
 
-        dsdφ += 2 * α * ϕ
+        dsdφ += 2 * α * φ
 
-        dsdφ += 4 * λ * ϕ**3
+        dsdφ += 4 * λ * φ**3
 
         return dsdφ
+
+
+def _local_action(
+    φ: float,
+    neighbours: list[float],
+    couplings: Phi4Couplings,
+) -> float:
+    """
+    Computes the local Phi^4 action for a single-component scalar field.
+    """
+    φi, φj, β, α, λ = φ, neighbours, *couplings
+    return (-β / 2) * φi * sum(φj) + α * φi**2 + λ * φi**4
+
+
+def get_local_action(
+    couplings: dict[str, float]
+) -> Callable[[float, list[float]], float]:
+    return partial(_local_action, couplings=_parse_couplings(couplings))

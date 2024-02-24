@@ -1,6 +1,6 @@
 from enum import StrEnum, auto
 from typing import TypeAlias
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 
 from jsonargparse.typing import PositiveInt, PositiveFloat, NonNegativeFloat
 import torch
@@ -23,6 +23,7 @@ from torchlft.utils.lattice import checkerboard_mask
 from torchlft.utils.linalg import dot
 
 Tensor: TypeAlias = torch.Tensor
+
 
 class ValidPartitioning(StrEnum):
     lexicographic = auto()
@@ -59,7 +60,7 @@ class Target:
 
     def build(self) -> Phi4Action:
         return Phi4Action(β=self.β, λ=self.λ)
-        #return Phi4Action(m_sq=self.m_sq, λ=self.λ)
+        # return Phi4Action(m_sq=self.m_sq, λ=self.λ)
 
 
 @dataclass
@@ -82,19 +83,54 @@ class AffineCouplingFlow:
             net.append(nn.LazyLinear(lattice_size, bias=self.net.bias))
             layer = DenseCouplingLayer(transform_module, net, layer_id)
             layers.append(layer)
-    
+
         if self.global_rescale:
             layers.append(GlobalRescalingLayer())
 
         return Composition(*layers)
-        
+
+
+@dataclass
+class SplineCouplingFlow:
+    net: DenseNet
+    n_layers: PositiveInt
+    global_rescale: bool
+    n_spline_bins: int
+
+    def build(self, lattice_size: int):
+        layers = []
+
+        for layer_id in range(self.n_layers):
+            transform_module = UnivariateTransformModule(
+                transform_cls=spline_transform(
+                    n_bins=self.n_spline_bins,
+                    lower_bound=-5.0,
+                    upper_bound=+5.0,
+                    boundary_conditions="linear",
+                ),
+                context_fn=nn.Identity(),
+                wrappers=[sum_log_gradient],
+            )
+            net = self.net.build()
+            size_out = transform_module.transform_cls.n_params * (
+                lattice_size // 2
+            )
+            net.append(nn.LazyLinear(size_out))
+            layer = DenseCouplingLayer(transform_module, net, layer_id)
+            layers.append(layer)
+
+        if self.global_rescale:
+            layers.append(GlobalRescalingLayer())
+
+        return Composition(*layers)
+
 
 class DenseCouplingModel(BaseModel):
     def __init__(
         self,
         target: Target,
-        flow: AffineCouplingFlow,
-        partitioning: ValidPartitioning
+        flow: SplineCouplingFlow,  # AffineCouplingFlow,
+        partitioning: ValidPartitioning,
     ):
         super().__init__()
 
@@ -104,13 +140,13 @@ class DenseCouplingModel(BaseModel):
         self.register_module("target", target.build())
 
         self.register_module("flow", flow.build(L**2))
-        
+
         partitioning = ValidPartitioning(str(partitioning))
         indices = partitioning.build(L, 2)
         self.register_buffer("indices", indices)
 
     def sample_base(self, batch_size: PositiveInt) -> tuple[Tensor, Tensor]:
-        D = self.L ** 2 #target.lattice_size
+        D = self.L**2  # target.lattice_size
 
         z = torch.empty(
             size=(batch_size, D), device=self.device, dtype=self.dtype
@@ -124,9 +160,7 @@ class DenseCouplingModel(BaseModel):
         φ = φ.unflatten(1, (self.L, self.L, 1))
         return self.target(φ)
 
-
     def flow_forward(self, z: Tensor) -> Tensor:
         φ, ldj = self.flow(z)
         φ = φ[:, self.indices]  # interleave elements to undo partitioning
         return φ, ldj
-        
