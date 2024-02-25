@@ -120,4 +120,3 @@ class Model(nn.Module, metaclass=ABCMeta):
 
     def grad_pullback(self, inputs: Tensor | Tensors) -> Tensor:
         raise NotImplementedError
-

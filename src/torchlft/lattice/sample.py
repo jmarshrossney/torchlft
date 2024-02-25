@@ -1,18 +1,28 @@
 from abc import ABC, abstractmethod
-from typing import Any, TypeAlias
+from typing import Any, ClassVar, TypeAlias
 
 import torch
 from tqdm import trange
 
 from torchlft.utils.torch import tuple_stack, dict_stack
 
-#torch.set_default_dtype(torch.double)
+# torch.set_default_dtype(torch.double)
 
 Tensor: TypeAlias = torch.Tensor
 Tensors: TypeAlias = tuple[Tensor, ...]
 
 
 class SamplingAlgorithm(ABC):
+    def __init__(self):
+        self.rng = torch.Generator(device="cpu")
+
+    def seed_rng(self, rng_seed: int | None = None) -> int:
+        if rng_seed is not None:
+            self.rng.manual_seed(rng_seed)
+        else:
+            rng_seed = self.rng.seed()
+        return rng_seed
+
     @abstractmethod
     def init(self, seed: int | None = None) -> Tensor | Tensors: ...
 
@@ -35,15 +45,12 @@ class DefaultSampler(Sampler):
         self,
         sample_size: int,
         thermalisation: int,
-        rng_seed: int,
     ):
         self.sample_size = sample_size
         self.thermalisation = thermalisation
-        self.rng_seed = rng_seed
 
     def sample(self, algorithm):
-        # torch.manual_seed(self.rng_seed)
-        state = algorithm.init(self.rng_seed)
+        state = algorithm.init()
 
         with trange(self.thermalisation, desc="Thermalisation") as pbar:
             for step in pbar:

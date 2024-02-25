@@ -5,22 +5,25 @@ from typing import Callable, NamedTuple, Self, TypeAlias
 import torch
 import torch.nn as nn
 
+from torchlft.lattice.action import TargetAction
 from torchlft.utils.lattice import laplacian
 from torchlft.utils.linalg import dot, mv
 
 Tensor: TypeAlias = torch.Tensor
 
 
-class GaussianAction(nn.Module):
+class GaussianAction(TargetAction):
     def __init__(self, lattice_length: int, lattice_dim: int, m_sq: float):
-        super().__init__()
+
         assert lattice_length % 2 == 0
         assert lattice_dim in (1, 2)
         assert m_sq > 0
 
         L, d = lattice_length, lattice_dim
-        D = pow(L, d)
 
+        super().__init__(lattice=tuple(L for _ in range(d)), m_sq=m_sq)
+
+        D = pow(L, d)
         K = -laplacian(L, d) + m_sq * torch.eye(D)
         Σ = torch.linalg.inv(K)
         C = torch.linalg.cholesky(Σ)
@@ -43,9 +46,6 @@ class GaussianAction(nn.Module):
         self.register_buffer("kernel", K)
         self.register_buffer("covariance", Σ)
         self.register_buffer("cholesky", C)
-
-    def extra_repr(self):
-        return f"lattice_length={self.lattice_length}, lattice_dim={self.lattice_dim}, m_sq={self.m_sq}"
 
     def forward(self, φ: Tensor) -> Tensor:
         K = self.kernel
@@ -89,18 +89,11 @@ def _parse_couplings(couplings: dict[str, float]) -> Phi4Couplings:
         return Phi4Couplings.particle_phys(**couplings)
 
 
-class Phi4Action(nn.Module):
-    def __init__(self, **couplings: dict[str, float]):
-        super().__init__()
-        self._original_couplings = couplings
-        self._parsed_couplings = _parse_couplings(couplings)
-
-    def extra_repr(self):
-        return str(self._original_couplings)
+class Phi4Action(TargetAction):
 
     @property
-    def couplings(self) -> Phi4Couplings:
-        return self._original_couplings
+    def _parsed_couplings(self) -> Phi4Couplings:
+        return _parse_couplings(self.couplings)
 
     def forward(self, φ: Tensor) -> Tensor:
         β, α, λ = self._parsed_couplings
@@ -137,6 +130,7 @@ class Phi4Action(nn.Module):
         dsdφ += 4 * λ * φ**3
 
         return dsdφ
+
 
 def _local_action(
     φ: float,

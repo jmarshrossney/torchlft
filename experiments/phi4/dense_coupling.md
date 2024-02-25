@@ -33,7 +33,7 @@ plt.style.use("seaborn-v0_8-paper")
 CUDA_AVAILABLE = torch.cuda.is_available()
 ```
 
-```python
+<!-- #raw jupyter={"source_hidden": true} -->
 _config_str = """
 model:
   class_path: torchlft.models.scalar.DenseCouplingModel
@@ -43,13 +43,30 @@ model:
       β: {beta}
       λ: {lam}
     flow:
-      net:
-        sizes: {sizes}
-        activation: tanh
-        bias: {bias}
-      n_layers: {n_layers}
-      global_rescale: true
-      symmetric: {symmetric}
+      - class_path: AffineCouplingBlock
+        init_args:
+          transform:
+            symmetric: {symmetric}
+          net:
+            sizes: {sizes}
+            activation: tanh
+            bias: {bias}
+          n_layers: {n_layers}
+      - class_path: SplineCouplingBlock
+        init_args:
+          transform:
+            n_bins: 8
+            bounds: 5.0
+          net:
+            sizes: {sizes}
+            activation: tanh
+            bias: {bias}
+          n_layers: 2
+      - class_path: GlobalRescaling
+        init_args:
+          init_scale: 0.5
+          frozen: true
+
     partitioning: checkerboard
 
 train:
@@ -67,8 +84,73 @@ _defaults = dict(
     beta=0.576,
     lam=0.5,
     sizes=[128],
-    bias=True,
-    symmetric=False,
+    bias=False,
+    symmetric=True,
+    n_layers=8,
+    n_steps=4000,
+    batch_size=4096,
+    cuda=CUDA_AVAILABLE,
+)
+   
+
+def get_config(**kwargs):
+    kwargs = _defaults | kwargs
+    config = _config_str.format(**kwargs)
+    return parser.parse_string(config)
+<!-- #endraw -->
+
+```python
+_config_str = """
+model:
+  class_path: torchlft.models.scalar.DenseCouplingModel
+  init_args:
+    target:
+      lattice_length: {L}
+      β: {beta}
+      λ: {lam}
+    flow:
+      to_free:
+        m_sq: 0.25
+      affine:
+        transform:
+          symmetric: {symmetric}
+        net:
+          sizes: {sizes}
+          activation: tanh
+          bias: {bias}
+        n_layers: {n_layers}
+      spline:
+        transform:
+          n_bins: 8
+          bounds: 4.0
+        net:
+          sizes: {sizes}
+          activation: tanh
+          bias: {bias}
+        n_layers: 2
+      rescale:
+        init_scale: 1.0
+        frozen: true
+
+    partitioning: checkerboard
+
+train:
+  n_steps: {n_steps}
+  batch_size: {batch_size}
+  init_lr: 0.001
+  display_metrics: false
+
+output: false
+cuda: {cuda}
+"""
+
+_defaults = dict(
+    L=8,
+    beta=0.576,
+    lam=0.5,
+    sizes=[128],
+    bias=False,
+    symmetric=True,
     n_layers=8,
     n_steps=4000,
     batch_size=4096,

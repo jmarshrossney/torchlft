@@ -1,8 +1,10 @@
 from math import isclose
-from typing import TypeAlias
+from typing import Self, TypeAlias
 
 import torch
 import torch.nn as nn
+
+from torchlft.lattice.action import Hamiltonian, SeparableHamiltonian
 
 from torchlft.lattice.sample import SamplingAlgorithm
 from torchlft.lattice.scalar.action import Phi4Action
@@ -11,32 +13,23 @@ from torchlft.utils.torch import dict_concat
 Tensor: TypeAlias = torch.Tensor
 
 
-# Separable Hamiltonian
-class Hamiltonian(nn.Module):
-    def __init__(self, action):
-        super().__init__()
-        self.register_module("action", action)
+class HamiltonianGaussianMomenta(SeparableHamiltonian):
+    def kinetic(self, p: Tensor) -> Tensor:
+        return 0.5 * p.pow(2).flatten(1).sum(1, keepdim=True)
 
-    def forward(self, x: Tensor, p: Tensor) -> Tensor:
-        return 0.5 * p.pow(2).flatten(1).sum(1, keepdim=True) + self.action(x)
-
-    def grad_wrt_coords(self, x: Tensor) -> Tensor:
-        return self.action.grad(x)
-
-    def grad_wrt_momenta(self, p: Tensor) -> Tensor:
+    def grad_wrt_momenta(self, x: Tensor, p: Tensor) -> Tensor:
         return p.clone()
 
-    def sample_momenta(
-        self, x0: Tensor, generator: torch.Generator | None = None
-    ) -> Tensor:
-        p0 = torch.empty_like(x0).normal_(generator=generator)
+    def sample_momenta(self, x0: Tensor) -> Tensor:
+        p0 = torch.empty_like(x0).normal_(generator=self.rng)
         return p0
 
 
 class LeapfrogIntegrator:
     def __init__(
         self,
-        hamiltonian,
+        velocity_func,
+        force_func,
         step_size: float,
         traj_length: float = 1.0,
     ):
@@ -47,10 +40,22 @@ class LeapfrogIntegrator:
         if not isclose(real_traj_length, traj_length):
             print("baddies")  # TODO
 
-        self.hamiltonian = hamiltonian
+        self.velocity_func = velocity_func
+        self.force_func = force_func
+
         self.step_size = step_size
         self.n_steps = n_steps
         self.traj_length = traj_length
+
+    @classmethod
+    def from_hamiltonian(cls, hamiltonian: Hamiltonian, **kwargs) -> Self:
+        return cls(
+            velocity_func=hamiltonian.grad_wrt_momenta,
+            force_func=lambda *inputs: hamiltonian.grad_wrt_coords(
+                *inputs
+            ).negative(),
+            **kwargs,
+        )
 
     def on_step(self, x: Tensor, p: Tensor, t: float) -> None:
         pass
@@ -61,7 +66,7 @@ class LeapfrogIntegrator:
         p = p.clone()
         ε = -self.step_size if inverse else self.step_size
 
-        F = self.hamiltonian.grad_wrt_coords(x).negative()
+        F = self.force_func(x, p)
 
         for _ in range(self.n_steps):
             self.on_step(x, p, t)
@@ -69,11 +74,11 @@ class LeapfrogIntegrator:
             # NOTE: avoid in-place here in case p stored in on_step_func
             p = p + (ε / 2) * F
 
-            v = self.hamiltonian.grad_wrt_momenta(p)
+            v = self.velocity_func(x, p)
 
             x = x + ε * v
 
-            F = self.hamiltonian.grad_wrt_coords(x).negative()
+            F = self.force_func(x, p)
 
             p += (ε / 2) * F
 
@@ -95,38 +100,53 @@ class LeapfrogIntegrator:
 
 
 class HybridMonteCarlo(SamplingAlgorithm):
+
     def __init__(
         self,
-        lattice: tuple[int, ...],
-        integrator: LeapfrogIntegrator,
+        lattice,
+        hamiltonian: Hamiltonian,
+        step_size: float,
+        traj_length: float = 1.0,
         n_replica: int = 1,
+        flow_hamiltonian: Hamiltonian | None = None,
     ):
         self.lattice = lattice
+
+        self.hamiltonian = hamiltonian
         self.n_replica = n_replica
-        self.integrator = integrator
 
-        self.hamiltonian = integrator.hamiltonian
+        if flow_hamiltonian is None:
+            flow_hamiltonian = hamiltonian
 
-        # NOTE: should I leave this unset to prevent 'update' being called before 'init'?
+        self.integrator = LeapfrogIntegrator.from_hamiltonian(
+            flow_hamiltonian,
+            step_size=step_size,
+            traj_length=traj_length,
+        )
+
         self.rng = torch.Generator("cpu")
+        self.hamiltonian.rng = self.rng
 
-    def init(self, rng_seed: int | None = None):
-
+    def seed_rng(self, rng_seed: int | None = None) -> int:
         if rng_seed is not None:
             self.rng.manual_seed(rng_seed)
+        else:
+            rng_seed = self.rng.seed()
+        return rng_seed
 
+    def init(self):
+
+        # TODO shape is complicated: depends on flow!
         state = torch.empty(self.n_replica, *self.lattice).normal_(
             0, 1, generator=self.rng
         )
 
-        # flatten??
-
-        return state.flatten(1)
+        return state  # .flatten(1)
 
     def update(self, state: Tensor) -> tuple[Tensor, dict[str, Tensor]]:
 
         φ0 = state
-        ω0 = self.hamiltonian.sample_momenta(φ0, generator=self.rng)
+        ω0 = self.hamiltonian.sample_momenta(φ0)
 
         H0 = self.hamiltonian(φ0, ω0)
 
@@ -139,19 +159,19 @@ class HybridMonteCarlo(SamplingAlgorithm):
 
         φt = torch.where(accepted, φt, φ0)
 
-        log_data = {"ΔH": H0 - Ht, "accepted": accepted}
+        logs = {"ΔH": H0 - Ht, "accepted": accepted}
 
-        return φt, log_data
+        return φt, logs
 
-    def compute_stats(self, log_data: list[dict[str, Tensor]]):
+    def compute_stats(self, logs: list[dict[str, Tensor]]):
         # TODO: actually useful stats, mean plus error
 
-        log_data = dict_concat(log_data)
+        logs = dict_concat(logs)
 
-        ΔH = log_data["ΔH"]
+        ΔH = logs["ΔH"]
         stat = torch.exp(ΔH).mean() - 1  # TODO
 
-        acceptance = log_data["accepted"]
+        acceptance = logs["accepted"]
         print("acc shape: ", acceptance.shape)
         acceptance = acceptance.float().mean()
 
@@ -161,10 +181,12 @@ class HybridMonteCarlo(SamplingAlgorithm):
 def main():
     from torchlft.lattice.sample import DefaultSampler
 
-    sampler = DefaultSampler(1000, 100, 1234567)
-    hamiltonian = Hamiltonian(Phi4Action(β=0.5, λ=0.5))
-    integrator = LeapfrogIntegrator(hamiltonian, step_size=0.05)
-    alg = HybridMonteCarlo([6, 6], integrator)
+    sampler = DefaultSampler(1000, 100)
+    lattice = [6, 6]
+    hamiltonian = HamiltonianGaussianMomenta(
+        Phi4Action(lattice=lattice, β=0.5, λ=0.5)
+    )
+    alg = HybridMonteCarlo(lattice, hamiltonian, step_size=0.05)
     configs, stats = sampler.sample(alg)
 
     print("configs shape: ", configs.shape)
