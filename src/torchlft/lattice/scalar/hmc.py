@@ -15,10 +15,10 @@ Tensor: TypeAlias = torch.Tensor
 class Hamiltonian(nn.Module):
     def __init__(self, action):
         super().__init__()
-        self.action = action
+        self.register_module("action", action)
 
     def forward(self, x: Tensor, p: Tensor) -> Tensor:
-        return 0.5 * p.pow(2).sum(dim=(1, 2)) + self.action(x)
+        return 0.5 * p.pow(2).flatten(1).sum(1, keepdim=True) + self.action(x)
 
     def grad_wrt_coords(self, x: Tensor) -> Tensor:
         return self.action.grad(x)
@@ -121,12 +121,13 @@ class HybridMonteCarlo(SamplingAlgorithm):
 
         # flatten??
 
-        return state
+        return state.flatten(1)
 
     def update(self, state: Tensor) -> tuple[Tensor, dict[str, Tensor]]:
 
         φ0 = state
         ω0 = self.hamiltonian.sample_momenta(φ0, generator=self.rng)
+
         H0 = self.hamiltonian(φ0, ω0)
 
         φt, ωt, t = self.integrator(φ0, ω0)

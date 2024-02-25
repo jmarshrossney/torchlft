@@ -6,7 +6,7 @@ from tqdm import trange
 
 from torchlft.utils.torch import tuple_stack, dict_stack
 
-torch.set_default_dtype(torch.double)
+#torch.set_default_dtype(torch.double)
 
 Tensor: TypeAlias = torch.Tensor
 Tensors: TypeAlias = tuple[Tensor, ...]

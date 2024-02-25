@@ -129,7 +129,7 @@ class DenseCouplingModel(BaseModel):
     def __init__(
         self,
         target: Target,
-        flow: SplineCouplingFlow,  # AffineCouplingFlow,
+        flow: SplineCouplingFlow,
         partitioning: ValidPartitioning,
     ):
         super().__init__()
@@ -164,3 +164,21 @@ class DenseCouplingModel(BaseModel):
         φ, ldj = self.flow(z)
         φ = φ[:, self.indices]  # interleave elements to undo partitioning
         return φ, ldj
+
+    def grad_pullback(self, z: Tensor) -> Tensor:
+        z.requires_grad_(True)
+        z.grad = None
+
+        φ, ldj = self.flow_forward(z)
+        S = self.compute_target(φ) - ldj
+
+        (gradient,) = torch.autograd.grad(
+            outputs=S,
+            inputs=z,
+            grad_outputs=torch.ones_like(S),
+        )
+
+        z.requires_grad_(False)
+        z.grad = None
+
+        return gradient

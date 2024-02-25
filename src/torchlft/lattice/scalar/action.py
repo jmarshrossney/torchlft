@@ -138,7 +138,6 @@ class Phi4Action(nn.Module):
 
         return dsdφ
 
-
 def _local_action(
     φ: float,
     neighbours: list[float],
