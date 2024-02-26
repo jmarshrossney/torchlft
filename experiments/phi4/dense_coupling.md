@@ -126,7 +126,7 @@ model:
         net:
           sizes: {sizes}
           activation: tanh
-          bias: {bias}
+          bias: true
         n_layers: 2
       rescale:
         init_scale: 1.0
