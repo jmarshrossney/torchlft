@@ -6,6 +6,7 @@ import warnings
 import torch
 import torch.nn.functional as F
 
+from torchlft.nflow.transforms.core import Transform
 from torchlft.nflow.transforms.wrappers import mask_outside_interval
 
 Tensor = torch.Tensor
@@ -198,13 +199,9 @@ def spline_transform(
     elif boundary_conditions == "free":
         n_derivs = n_bins + 1
 
-    class SplineTransform:
-        n_params: int = 2 * n_bins + n_derivs
-
-        def __init__(self, params: Tensor):
-            self.knots = generate_knots(params)
-
-        def __call__(self, x: Tensor) -> tuple[Tensor, Tensor]:
-            return forward_fn(x, self.knots)
+    class SplineTransform(Transform):
+        n_params = 2 * n_bins + n_derivs
+        handle_params_fn = staticmethod(generate_knots)
+        transform_fn = staticmethod(forward_fn)
 
     return SplineTransform

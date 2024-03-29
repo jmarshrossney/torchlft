@@ -102,7 +102,7 @@ class TriangularLinearModel(GaussianModel):
         super().__init__(target)
 
         D = self.target.lattice_size
-        self.register_module("transform", TriangularLinearLayer(D))
+        self.register_module("transform", TriangularLinearLayer.from_size(D))
 
     def flow_forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
         return self.transform(z)
@@ -128,7 +128,7 @@ class LinearCouplingFlow:
 
             layers.append(layer)
 
-        layers.append(DiagonalLinearLayer(lattice_size))
+        layers.append(DiagonalLinearLayer.from_size(lattice_size))
 
         return Composition(*layers)
 
@@ -178,7 +178,7 @@ class NonLinearCouplingFlow:
             layers.append(layer)
 
         if self.shift_only:
-            layers.append(DiagonalLinearLayer(lattice_size))
+            layers.append(DiagonalLinearLayer.from_size(lattice_size))
 
         return Composition(*layers)
 

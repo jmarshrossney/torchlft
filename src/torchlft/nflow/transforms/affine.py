@@ -1,10 +1,11 @@
 from math import log
+from typing import TypeAlias
 
 import torch
 
 from torchlft.nflow.transforms.core import Transform
 
-Tensor = torch.Tensor
+Tensor: TypeAlias = torch.Tensor
 
 
 def _affine_forward(x: Tensor, params: Tensor) -> tuple[Tensor, Tensor]:

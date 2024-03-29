@@ -38,7 +38,7 @@ class DiagonalLinearLayer(Layer):
         
     @classmethod
     def from_size(cls, size: int):
-        return cls(torch.eye(size))
+        return cls(torch.ones(size))
 
     def get_weight(self) -> Tensor:
         return torch.diag_embed(softplus(self.weight))
@@ -68,7 +68,7 @@ class TriangularLinearLayer(Layer):
 
     @classmethod
     def from_size(cls, size: int):
-        return cls(torch.eye(D) + torch.empty(D**2).uniform_(0, 1).tril(-1))
+        return cls(torch.eye(size) + torch.empty(size, size).uniform_(-0.5, 0.5).tril(-1))
 
     @classmethod
     def from_gaussian_target(cls, covariance: Tensor | None = None, precision: Tensor | None = None):
