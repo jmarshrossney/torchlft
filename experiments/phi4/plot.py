@@ -33,9 +33,9 @@ def plot_metrics(logger, figsize: tuple[int, int] = (6, 4)):
 
     handles, labels = [], []
 
-    handle = _plot(ax, kl_div, "tab:blue")
-    handles.append(handle)
-    labels.append("KL Divergence")
+    #handle = _plot(ax, kl_div, "tab:blue")
+    #handles.append(handle)
+    #labels.append("KL Divergence")
 
     handle = _plot(ax, one_minus_acc, "tab:orange")
     handles.append(handle)
@@ -50,9 +50,10 @@ def plot_metrics(logger, figsize: tuple[int, int] = (6, 4)):
     labels.append(r"Variance of $\log (p_\theta / p^\ast)$")
 
     ax.set_yscale("log")
-    ax.set_ylim(None, 10)
+    ax.set_ylim(None, 2)
 
     ax.set_xlabel("Training step")
+    ax.set_ylabel("Metrics")
 
     ax.legend(handles, labels)
 

@@ -82,9 +82,10 @@ class Phi4Target:
 @dataclass
 class AffineTransform:
     symmetric: bool
+    shift_only: bool = False
 
     def build(self):
-        return affine_transform(symmetric=self.symmetric)
+        return affine_transform(symmetric=self.symmetric, shift_only=self.shift_only)
 
 
 @dataclass
@@ -114,11 +115,13 @@ class FreeTheoryLayer:
         
         def forward_pre(mod, inputs):
             (inputs,) = inputs
+            # NOTE: better way to do this?
+            mod._DATA_SHAPE = inputs.shape
             return inputs.flatten(1)
 
         def forward_post(mod, inputs, outputs):
             output, ldj = outputs
-            return (output.unflatten(1, (L, L, 1)), ldj)
+            return (output.view(mod._DATA_SHAPE), ldj)
 
         layer.register_forward_pre_hook(forward_pre)
         layer.register_forward_hook(forward_post)

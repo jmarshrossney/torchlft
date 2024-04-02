@@ -38,6 +38,8 @@ def compute_autocorrelation_scipy(X: Tensor):
 def _compute_autocorrelation_torch(X: Tensor):
     X = X.squeeze()
     assert X.dim() == 1
+    
+    assert len(X) % 2 == 0
     n = len(X) // 2
 
     X = X - X.mean()
@@ -79,7 +81,7 @@ def compute_autocorrelations(
     try:
         Γ = compute_autocorrelation_scipy(X)
     except ImportError:
-        Γ = compute_autocorrelation_torch(X)
+        Γ = compute_autocorrelation_torch(X)[:, :-1]  # NOTE: sort this out
 
     # Average over replica
     # WARNING uses nanmean, which might hide issues
@@ -127,3 +129,8 @@ def compute_autocorrelations(
         truncation_window=W_opt,
         errors=errors,
     )
+
+if __name__ == "__main__":
+    obs = torch.rand(1, 100)
+    ac = compute_autocorrelations(obs)
+    print(ac)

@@ -45,7 +45,8 @@ class PullbackAction(Action):
     @torch.no_grad()
     def forward(self, inputs: Tensor | Tensors) -> Tensor:
         outputs, log_det_jacobian = self.model.flow_forward(inputs)
-        pullback = self.model.compute_target(outputs) - log_det_jacobian
+        target = self.model.compute_target(outputs)
+        pullback = target - log_det_jacobian
         return pullback
 
     @torch.enable_grad()
@@ -84,7 +85,10 @@ class SeparableHamiltonian(Hamiltonian):
         ...
 
     def forward(self, coords: Tensor | Tensors, momenta: Tensor | Tensors) -> Tensor:
-        return self.kinetic(momenta) + self.potential(coords)
+        V = self.potential(coords)
+        K = self.kinetic(momenta)
+        assert V.shape == K.shape, f"Shape mismatch: {V.shape} =/= {K.shape}"
+        return K + V
 
     def grad_wrt_coords(
         self, coords: Tensor | Tensors, momenta: Tensor | Tensors

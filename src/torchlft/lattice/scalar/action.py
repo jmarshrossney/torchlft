@@ -50,6 +50,7 @@ class GaussianAction(TargetAction):
     def forward(self, φ: Tensor) -> Tensor:
         K = self.kernel
         S = 0.5 * dot(φ, mv(K, φ))
+        S = S.view(-1, 1)
         return S + self.log_norm
 
     def grad(self, φ: Tensor) -> Tensor:

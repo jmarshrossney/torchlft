@@ -91,10 +91,10 @@ class GaussianModel(BaseModel):
         S = 0.5 * dot(z, z)
         log_norm = 0.5 * D * log(2 * π)
 
-        return z, (S + log_norm).unsqueeze(-1)
+        return z, (S + log_norm).view(-1, 1)
 
     def compute_target(self, φ: Tensor) -> Tensor:
-        return self.target(φ).unsqueeze(-1)
+        return self.target(φ).view(-1, 1)
 
 
 class TriangularLinearModel(GaussianModel):

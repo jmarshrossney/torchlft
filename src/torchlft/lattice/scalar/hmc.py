@@ -10,6 +10,8 @@ from torchlft.lattice.sample import SamplingAlgorithm
 from torchlft.lattice.scalar.action import Phi4Action
 from torchlft.utils.torch import dict_concat
 
+from torchlft.utils.linalg import dot, mv
+
 Tensor: TypeAlias = torch.Tensor
 
 
@@ -25,6 +27,30 @@ class HamiltonianGaussianMomenta(SeparableHamiltonian):
         return p0
 
 
+class HamiltonianFourierAcceleration(SeparableHamiltonian):
+    def __init__(self, action):
+        super().__init__(action)
+        # Assume action is GaussianAction
+        self.register_buffer("mass_matrix", action.covariance.clone())
+        self.register_buffer("cholesky_inv", torch.linalg.inv(action.cholesky))
+
+    def kinetic(self, p: Tensor) -> Tensor:
+        M = self.mass_matrix
+        res = 0.5 * dot(p, mv(M, p))
+        return res.view(-1, 1)
+
+    def grad_wrt_momenta(self, x: Tensor, p: Tensor) -> Tensor:
+        M = self.mass_matrix
+        return mv(M, p.clone())
+
+    def sample_momenta(self, x0: Tensor) -> Tensor:
+        L_inv = self.cholesky_inv
+        p0 = torch.empty_like(x0).normal_(generator=self.rng)
+        return mv(L_inv, p0)
+
+
+
+
 class LeapfrogIntegrator:
     def __init__(
         self,
@@ -37,7 +63,9 @@ class LeapfrogIntegrator:
         # TODO: prioritise traj_length or step_size?
         n_steps = max(1, round(traj_length / abs(step_size)))
         real_traj_length = n_steps * step_size
-        if not isclose(real_traj_length, traj_length):
+        if not isclose(real_traj_length, traj_length, abs_tol=1e-3):
+            print(f"real traj length: {real_traj_length}")
+            print(f"target traj length: {traj_length}")
             print("baddies")  # TODO
 
         self.velocity_func = velocity_func
@@ -137,11 +165,11 @@ class HybridMonteCarlo(SamplingAlgorithm):
     def init(self):
 
         # TODO shape is complicated: depends on flow!
-        state = torch.empty(self.n_replica, *self.lattice).normal_(
+        state = torch.empty(self.n_replica, *self.lattice, 1).normal_(
             0, 1, generator=self.rng
         )
 
-        return state  # .flatten(1)
+        return state#.flatten(1)
 
     def update(self, state: Tensor) -> tuple[Tensor, dict[str, Tensor]]:
 
@@ -149,13 +177,20 @@ class HybridMonteCarlo(SamplingAlgorithm):
         ω0 = self.hamiltonian.sample_momenta(φ0)
 
         H0 = self.hamiltonian(φ0, ω0)
+        assert H0.dim() == 2
+        assert H0.shape[1] == 1
 
         φt, ωt, t = self.integrator(φ0, ω0)
 
         Ht = self.hamiltonian(φt, ωt)
+        
+        assert Ht.shape == H0.shape
 
         unif = torch.rand(Ht.shape, generator=self.rng)
         accepted = torch.exp(Ht - H0) > unif
+
+        # TODO: tidy up
+        accepted = accepted.view([-1] + [1 for _ in range(φt.dim() - 1)])
 
         φt = torch.where(accepted, φt, φ0)
 
@@ -166,7 +201,7 @@ class HybridMonteCarlo(SamplingAlgorithm):
     def compute_stats(self, logs: list[dict[str, Tensor]]):
         # TODO: actually useful stats, mean plus error
 
-        logs = dict_concat(logs)
+        logs = dict_concat(logs, dim=1)
 
         ΔH = logs["ΔH"]
         stat = torch.exp(ΔH).mean() - 1  # TODO
