@@ -35,9 +35,7 @@ plt.style.use("seaborn-v0_8-paper")
 CUDA_AVAILABLE = torch.cuda.is_available()
 ```
 
-<!-- #region jp-MarkdownHeadingCollapsed=true -->
 ## Configuration
-<!-- #endregion -->
 
 ```python
 _global_defaults = dict(
@@ -192,7 +190,7 @@ print(untrained_model)
 ## Linear Model
 
 ```python
-config = get_config("linear")
+config = get_config("linear", n_layers=3)
 
 instantiated_config = parser.instantiate_classes(config)
 untrained_model = instantiated_config.model
@@ -210,7 +208,7 @@ _ = plot_metrics(logger)
 ```
 
 ```python
-# [fig for fig in plot_layer_jacobians(trained_model)]
+[fig for fig in plot_layer_jacobians(trained_model)]
 ```
 
 ```python
@@ -220,7 +218,7 @@ _ = plot_metrics(logger)
 ## Non-linear Model
 
 ```python
-config = get_config("nonlinear")
+config = get_config("nonlinear", activation="leaky_relu", init_lr=0.001)
 
 trained_model, logger = main(config)
 
@@ -234,9 +232,9 @@ _ = plot_metrics(logger)
 _ = plot_layer_log_det_jacobians(trained_model)
 ```
 
-```python
+<!-- #raw -->
 _ = plot_jacobian_qr(trained_model)
-```
+<!-- #endraw -->
 
 ## Equivariant Linear Model
 
@@ -286,12 +284,12 @@ We see an overshoot for deep models, even for relatively small learning rates...
 ```python
 configs = {}
 
-configs["3x Linear Coupling + Diagonal"] = get_config(
+configs["2x Linear Coupling + Diagonal"] = get_config(
     "linear",
-    n_layers=3,
+    n_layers=2,
 )
 
-for n_layers in (4, 8, 12, 16):
+for n_layers in (4, 8):#, 12, 16):
     configs[f"{n_layers}x Non-linear Coupling"] = get_config(
         "nonlinear",
         n_layers=n_layers,

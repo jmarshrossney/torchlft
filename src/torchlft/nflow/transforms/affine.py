@@ -1,10 +1,11 @@
 from math import log
+from typing import TypeAlias
 
 import torch
 
 from torchlft.nflow.transforms.core import Transform
 
-Tensor = torch.Tensor
+Tensor: TypeAlias = torch.Tensor
 
 
 def _affine_forward(x: Tensor, params: Tensor) -> tuple[Tensor, Tensor]:
@@ -41,11 +42,9 @@ def affine_transform(
             )  # noqa E731
 
         if symmetric:
-            raise Exception("this is bad")
             _scale_fn = scale_fn
-            scale_fn = lambda s: _scale_fn(
-                s.abs()
-            )  # + _scale_fn(-s))  # noqa E731
+            scale_fn = lambda s: _scale_fn(s.abs())
+            # scale_fn = _scale_fn(s) + _scale_fn(-s))  # noqa E731
 
         if rescale_only:
             n_params = 1

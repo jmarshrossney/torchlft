@@ -38,6 +38,19 @@ import torch
 import matplotlib.pyplot as plt
 
 plt.style.use("seaborn-v0_8-paper")
+
+
+SMALL_SIZE = 10
+MEDIUM_SIZE = 12
+BIGGER_SIZE = 14
+
+plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
+plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 ```
 
 ## From one to two dimensions
@@ -501,11 +514,11 @@ fig, axes = plt.subplots(1, 3, figsize=(8, 3))
 axes[0].set_axis_off()
 axes[0].set_title(r"$L_\theta$")
 axes[1].set_axis_off()
-axes[1].set_title(r"$L_\theta - L_\ast$")
+axes[1].set_title(r"$L_\theta - L_c$")
 axes[2].set_yticks([])
 axes[2].set_yticklabels([])
-axes[2].set_xlim(-0.0035, 0.0035)
-axes[2].set_xlabel(r"$L_\theta - L_\ast$")
+#axes[2].set_xlim(-0.0035, 0.0035)
+axes[2].set_xlabel(r"$L_\theta - L_c$")
 
 axes[0].imshow(empirical_weights)
 axes[1].imshow(empirical_weights - expected_weights)
@@ -561,8 +574,74 @@ model:
       m_sq: {m_sq}
 
 train:
-    n_steps: 4000
-    batch_size: 1024
+    n_steps: 8000
+    batch_size: 4096
+    init_lr: 0.01
+    display_metrics: false
+
+output: false
+"""
+```
+
+<!-- #raw -->
+for ξ in (2, 10, 25):
+
+    config = parser.parse_string(config_str.format(L=100, m_sq=(1 / ξ**2)))
+
+    model, logger = main(config)
+
+    _ = plot_metrics(logger)
+<!-- #endraw -->
+
+```python
+def _plot(ax, tensor, colour):
+    q = torch.tensor([0.25, 0.75], dtype=tensor.dtype)
+    fb = ax.fill_between(
+        steps, *tensor.quantile(q, dim=1), color=colour, alpha=0.5
+    )
+    (l,) = ax.plot(
+        steps, tensor.quantile(0.5, dim=1), color=colour, linestyle="--"
+    )
+    return (fb, l)
+
+fig, ax = plt.subplots()
+handles, labels = [], []
+
+for ξ, colour in zip((2, 10, 25), ("tab:blue", "tab:orange", "tab:green")):
+
+    config = parser.parse_string(config_str.format(L=100, m_sq=(1 / ξ**2)))
+
+    model, logger = main(config)
+    
+    metrics = logger.get_data()
+    steps = metrics["steps"]
+    kl_div = -metrics["mlw"]
+
+    handle = _plot(ax, kl_div, colour)
+    handles.append(handle)
+    labels.append(f"ξ = {ξ}")
+
+ax.set_yscale("log")
+ax.set_ylim(None, 100)
+ax.set_xlim(0, 8000)
+ax.set_xlabel("Training step")
+ax.set_ylabel("KL Divergence")
+ax.legend(handles, labels)
+```
+
+```python
+config_str = """
+model:
+  class_path: torchlft.models.gaussian.TriangularLinearModel
+  init_args: 
+    target:
+      lattice_length: {L}
+      lattice_dim: 1
+      m_sq: {m_sq}
+
+train:
+    n_steps: 8000
+    batch_size: 512
     init_lr: 0.01
     display_metrics: false
 
@@ -571,13 +650,93 @@ output: false
 ```
 
 ```python
-for ξ in (2, 10, 25):
+def _plot(ax, tensor, colour):
+    q = torch.tensor([0.25, 0.75], dtype=tensor.dtype)
+    fb = ax.fill_between(
+        steps, *tensor.quantile(q, dim=1), color=colour, alpha=0.5
+    )
+    (l,) = ax.plot(
+        steps, tensor.quantile(0.5, dim=1), color=colour, linestyle="--"
+    )
+    return (fb, l)
+
+fig, ax = plt.subplots()
+handles, labels = [], []
+
+for ξ, colour in zip((2, 10, 25), ("tab:blue", "tab:orange", "tab:green")):
 
     config = parser.parse_string(config_str.format(L=100, m_sq=(1 / ξ**2)))
 
     model, logger = main(config)
+    
+    metrics = logger.get_data()
+    steps = metrics["steps"]
+    kl_div = -metrics["mlw"]
 
-    _ = plot_metrics(logger)
+    handle = _plot(ax, kl_div, colour)
+    handles.append(handle)
+    labels.append(f"ξ = {ξ}")
+
+ax.set_yscale("log")
+ax.set_ylim(None, 100)
+ax.set_xlabel("Training step")
+ax.set_ylabel("KL Divergence")
+ax.legend(handles, labels)
+```
+
+```python
+config_str = """
+model:
+  class_path: torchlft.models.gaussian.TriangularLinearModel
+  init_args: 
+    target:
+      lattice_length: {L}
+      lattice_dim: 1
+      m_sq: {m_sq}
+
+train:
+    n_steps: 2000
+    batch_size: 512
+    init_lr: 0.01
+    display_metrics: false
+
+output: false
+"""
+```
+
+```python
+def _plot(ax, tensor, colour):
+    q = torch.tensor([0.25, 0.75], dtype=tensor.dtype)
+    fb = ax.fill_between(
+        steps, *tensor.quantile(q, dim=1), color=colour, alpha=0.5
+    )
+    (l,) = ax.plot(
+        steps, tensor.quantile(0.5, dim=1), color=colour, linestyle="--"
+    )
+    return (fb, l)
+
+fig, ax = plt.subplots()
+handles, labels = [], []
+
+for ξ, colour in zip((2, 10, 25), ("tab:blue", "tab:orange", "tab:green")):
+
+    config = parser.parse_string(config_str.format(L=100, m_sq=(1 / ξ**2)))
+
+    model, logger = main(config)
+    
+    metrics = logger.get_data()
+    steps = metrics["steps"]
+    kl_div = -metrics["mlw"]
+
+    handle = _plot(ax, kl_div, colour)
+    handles.append(handle)
+    labels.append(f"ξ = {ξ}")
+
+ax.set_yscale("log")
+ax.set_ylim(None, 100)
+ax.set_xlabel("Training step")
+ax.set_ylabel("KL Divergence")
+ax.legend(handles, labels)
 ```
 
 ```python

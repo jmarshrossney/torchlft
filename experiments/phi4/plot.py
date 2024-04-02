@@ -33,9 +33,9 @@ def plot_metrics(logger, figsize: tuple[int, int] = (6, 4)):
 
     handles, labels = [], []
 
-    handle = _plot(ax, kl_div, "tab:blue")
-    handles.append(handle)
-    labels.append("KL Divergence")
+    #handle = _plot(ax, kl_div, "tab:blue")
+    #handles.append(handle)
+    #labels.append("KL Divergence")
 
     handle = _plot(ax, one_minus_acc, "tab:orange")
     handles.append(handle)
@@ -50,48 +50,16 @@ def plot_metrics(logger, figsize: tuple[int, int] = (6, 4)):
     labels.append(r"Variance of $\log (p_\theta / p^\ast)$")
 
     ax.set_yscale("log")
-    ax.set_ylim(None, 10)
+    ax.set_ylim(None, 2)
 
     ax.set_xlabel("Training step")
+    ax.set_ylabel("Metrics")
 
     ax.legend(handles, labels)
 
     fig.tight_layout()
 
     return fig
-
-
-def plot_model_jacobian_vs_covariance(model, batch_size: int = 1):
-    cov = model.target.covariance
-
-    jac, _, _ = get_model_jacobian(model, batch_size)
-
-    D = int(sqrt(jac[0].numel()))
-    jac = jac.view(-1, D, D)
-
-    jac_sq = torch.einsum("bij,bkj-> bik", jac, jac)
-    jac_sq = jac_sq.mean(dim=0)
-
-    fig, ax = plt.subplots()
-    ax.set_title("Jacobian squared")
-    ax.set_axis_off()
-    ax.imshow(jac_sq)
-
-    yield fig
-
-    fig, ax = plt.subplots()
-    ax.set_title("Jacobian squared minus target covariance")
-    ax.set_axis_off()
-    ax.imshow(jac_sq - cov)
-
-    yield fig
-
-    fig, ax = plt.subplots()
-    ax.set_title("Jacobian squared minus target covariance")
-    ax.hist((jac_sq - cov).flatten(), bins=25)
-    ax.set_xlabel(r"$J_\theta J_\theta^\top - \Sigma$")
-
-    yield fig
 
 
 def plot_layer_jacobians(model):
@@ -168,10 +136,10 @@ def plot_layer_log_det_jacobians(
     ax.set_ylabel("Cumulative log det Jacobian")
 
     correct = list(models.values())[0].target.cholesky.diag().log().sum()
-    chol = ax.axhline(correct, color="black", linestyle=":")
+    chol = ax.axhline(correct, color="red", linestyle=":")
 
     handles = [chol]
-    labels = ["$\log \det L_c$ (Target)"]
+    labels = ["log det Cholesky"]
 
     for label, model in models.items():
         lines = _plot_layer_ldj(model, ax, batch_size=batch_size)
@@ -181,51 +149,5 @@ def plot_layer_log_det_jacobians(
     ax.legend(handles=handles, labels=labels)
 
     fig.tight_layout()
-
-    return fig
-
-
-def plot_jacobian_qr(models: dict[str, Model] | Model):
-    # Allow single model
-    if isinstance(models, Model):
-        models = {"Model": models}
-
-    assert (
-        len(set([model.target.lattice_length for model in models.values()]))
-        == 1
-    )
-    assert len(set([model.target.m_sq for model in models.values()])) == 1
-
-    Lc = list(models.values())[0].target.cholesky
-    λc = Lc.diag()
-    λc, _ = λc.sort()
-
-    fig, ax = plt.subplots()
-
-    (c,) = ax.plot(λc, "k-")
-
-    handles, labels = [c], ["Cholesky eigvals"]
-
-    for label, model in models.items():
-        jac, _, _ = get_model_jacobian(model, 1)
-
-        D = int(sqrt(jac.numel()))
-        jac = jac.view(D, D)
-
-        Q, R = torch.linalg.qr(jac)
-        λ_R = R.diag().abs()
-        λ_R, _ = λ_R.sort()
-
-        # Marker to indicate which one is negative??
-
-        (line,) = ax.plot(λ_R)
-
-        labels.append(label)
-        handles.append(line)
-
-    ax.set_xlabel("Ascending order")
-    ax.set_ylabel("Absolute value of real eigenvalues")
-
-    ax.legend(handles=handles, labels=labels)
 
     return fig
