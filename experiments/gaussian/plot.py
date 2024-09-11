@@ -168,7 +168,7 @@ def plot_layer_log_det_jacobians(
     ax.set_ylabel("Cumulative log det Jacobian")
 
     correct = list(models.values())[0].target.cholesky.diag().log().sum()
-    chol = ax.axhline(correct, color="black", linestyle=":")
+    chol = ax.axhline(correct, color="black", linestyle="--")
 
     handles = [chol]
     labels = ["$\log \det L_c$ (Target)"]

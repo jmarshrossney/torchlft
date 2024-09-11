@@ -98,7 +98,9 @@ class ReverseKLTrainer(Trainer):
         self.logger = logger
 
         # TODO: make configurable
-        optimizer = torch.optim.Adam(model.parameters(), lr=self.init_lr)
+        #optimizer = torch.optim.Adam(model.parameters(), lr=self.init_lr)
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.init_lr)
+        #scheduler = torch.optim.lr_scheduler.MultiplicativeLR
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=self.n_steps
         )

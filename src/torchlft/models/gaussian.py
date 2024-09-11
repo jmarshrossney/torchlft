@@ -102,7 +102,8 @@ class TriangularLinearModel(GaussianModel):
         super().__init__(target)
 
         D = self.target.lattice_size
-        self.register_module("transform", TriangularLinearLayer.from_size(D))
+        #self.register_module("transform", TriangularLinearLayer.from_size(D))
+        self.register_module("transform", TriangularLinearLayer(torch.eye(D)))
 
     def flow_forward(self, z: Tensor) -> tuple[Tensor, Tensor]:
         return self.transform(z)
